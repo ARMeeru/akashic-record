@@ -47,16 +47,22 @@ no commits, too many files — relay these to the user verbatim; they are action
 
 1. Run `scan`. Relay precondition errors and stop if it fails.
 2. Read the repo's README, `.akashic/notes.md` if present (free-text steering — honor
-   it during planning), and any pre-existing agent-guidance docs (`CLAUDE.md`,
-   `AGENTS.md`) for domain and convention context. If a tokensave MCP or
-   `graphify-out/` graph exists for this repo, use them to identify modules,
-   hotspots, and entry points; otherwise the scan output plus targeted Grep is
-   enough. **Reading a file for context and citing it as a `Sources:` dependency
-   are different things** — some of these files (notably `CLAUDE.md`/`AGENTS.md`)
-   are routinely kept local-only via `.git/info/exclude` and never committed;
-   `verify` will reject any citation to an untracked path. Use such files to write
-   accurate prose, but cite the underlying tracked source code, not the doc, for
-   any claim that needs a line-range citation.
+   it during planning), and any pre-existing agent-guidance docs present on disk
+   (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `GEMINI.md`,
+   `.github/copilot-instructions.md`, and similar) for domain and convention context.
+   If a tokensave MCP or `graphify-out/` graph exists for this repo, use them to
+   identify modules, hotspots, and entry points; otherwise the scan output plus
+   targeted Grep is enough.
+
+   **These context docs inform how you write a page's `goal`; they never belong in
+   a page's `scope`.** `scope` is not "files worth reading" — it is the citable
+   dependency set, and files like the ones above are routinely kept local-only via
+   `.git/info/exclude` or a personal gitignore precisely so one person's AI-alignment
+   notes don't leak into the shared repo (this is common and deliberate, not a
+   mistake to work around). `scan`'s output already defines the citable universe —
+   if a file you read for context doesn't appear there, it cannot be cited by any
+   page, full stop; the page contract below enforces this at the point citations
+   actually get written, not just here at planning time.
 3. Write `.akashic/catalog.json`:
 
    ```json
@@ -91,7 +97,7 @@ no commits, too many files — relay these to the user verbatim; they are action
 
 > Write the wiki page **{title}** for the repository at {repo}.
 > Goal: {goal}
-> Read these files (your only sources): {scope-expanded file list}
+> Read these files — this is also the *entire* set of files you may cite: {scope-expanded file list}
 > Sibling pages for cross-links: {id → title list}
 >
 > Write to `.akashic/wiki/{id}.md`, exactly this shape:
@@ -100,10 +106,12 @@ no commits, too many files — relay these to the user verbatim; they are action
 >   `Sources: [src/auth/jwt.ts:42-88](../../src/auth/jwt.ts#L42-L88), [README.md](../../README.md)`
 >   — the literal token `Sources:`, comma-separated markdown links, paths relative to
 >   the page (repo root is `../../`), optional `#L<start>-L<end>` with line numbers
->   that are exactly right in the current working tree. Cited paths must be tracked
->   by git with exactly that spelling (verify rejects untracked, ignored, or
->   wrong-case paths). Never `file://`, never absolute paths, never URLs on Sources
->   lines.
+>   that are exactly right in the current working tree. **Only cite files from the
+>   list above** (verify independently rejects untracked, ignored, or wrong-case
+>   paths, but don't rely on that gate — if a fact came from somewhere outside your
+>   file list, e.g. something the orchestrator mentioned for background, restate it
+>   without a citation rather than inventing one). Never `file://`, never absolute
+>   paths, never URLs on Sources lines.
 > - Plain Mermaid (no style directives) only where a diagram genuinely clarifies;
 >   put a `Sources:` line directly under each diagram.
 > - Cross-reference sibling pages as `[Title](./other-id.md)` in prose.
