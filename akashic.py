@@ -39,7 +39,11 @@ VENDOR_DIRS = {"node_modules", "vendor", "third_party"}
 
 SLUG_RE = re.compile(r"^[a-z0-9]+(-[a-z0-9]+)*$")
 SOURCES_RE = re.compile(r"^Sources:\s*(.*)$")
-LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)\s]+)\)")
+# Non-greedy text group, not [^\]]* -- link text is often a literal file path,
+# and dynamic-route frameworks (Next.js "[id]/route.ts") put unescaped "]"
+# characters inside that path. [^\]]* stops at the first one and never finds
+# the real "](" delimiter, silently reporting zero links for a valid citation.
+LINK_RE = re.compile(r"\[(.*?)\]\(([^)\s]+)\)")
 FRAGMENT_RE = re.compile(r"^L(\d+)(?:-L(\d+))?$")
 SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
 VALID_STATUS = {"planned", "done"}
@@ -278,6 +282,13 @@ def parse_page_links(body_text):
 
 def resolve_citation(root, page_file, raw_target):
     """Split a citation target into (repo-relative posix path, fragment, error)."""
+    # CommonMark lets a link destination be wrapped in <...> to include
+    # characters like literal "[" "]" without percent-encoding -- exactly
+    # what a citation link TEXT containing a Next.js "[id]/route.ts" path
+    # forces the destination to need too. Strip the wrapper before parsing,
+    # or "<.." is treated as one literal path segment instead of "..".
+    if raw_target.startswith("<") and raw_target.endswith(">") and len(raw_target) >= 2:
+        raw_target = raw_target[1:-1]
     target, _, fragment = raw_target.partition("#")
     target = unquote(target)
     if SCHEME_RE.match(raw_target):

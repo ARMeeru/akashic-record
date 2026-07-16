@@ -172,7 +172,11 @@ Citation grammar (fixed, machine-parsed by `verify`):
 - Link target = a path relative to the page (repo root is `../../` from
   `.akashic/wiki/`), optional `#Lstart-Lend` fragment. These render as working,
   line-highlighting links on GitHub — unlike Qoder's non-standard `file://` scheme,
-  which renders dead.
+  which renders dead. When the link **text** is itself a file path containing a
+  literal `[`/`]` (routing frameworks that name path segments this way — Next.js
+  `[id]/route.ts` is the case that surfaced it), the destination may be wrapped in
+  angle brackets per CommonMark (`(<../../app/[id]/route.ts#L1-L10>)`) instead of
+  percent-encoding the brackets; the parser strips the wrapper before resolving.
 - Line numbers are coordinates **in the anchor commit**.
 - **`Sources:` stays in English regardless of wiki language.** Qoder localizes its
   structural markers in zh wikis, which breaks any parser; here machine-read tokens are

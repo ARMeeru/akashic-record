@@ -330,6 +330,35 @@ class TestReviewRegressions(RepoCase):
         self.assertNotIn("src/ghost.py", files,
                          "fenced example citations must not become dependencies")
 
+    def test_bracketed_dynamic_route_citation_parses(self):
+        """Next.js-style '[id]/route.ts' in the link TEXT contains a literal
+        ']' -- the parser must not stop there and report zero links."""
+        repo = self.make_repo()
+        self.write(repo, "app/users/[id]/route.ts", "a\nb\nc\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["app/**"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: "
+                   "[app/users/[id]/route.ts:1-3](../../app/users/[id]/route.ts#L1-L3)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertEqual(errors, [],
+                         f"a bracketed dynamic-route path must parse as a citation, got: {errors}")
+
+    def test_angle_bracket_wrapped_destination_resolves(self):
+        """CommonMark allows <...>-wrapped link destinations for targets that
+        contain characters like literal '[' ']' -- exactly what citing a
+        Next.js '[id]/route.ts' path forces the destination to need."""
+        repo = self.make_repo()
+        self.write(repo, "app/users/[id]/route.ts", "a\nb\nc\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["app/**"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: "
+                   "[app/users/[id]/route.ts:1-3](<../../app/users/[id]/route.ts#L1-L3>)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertEqual(errors, [],
+                         f"an angle-bracket-wrapped destination must resolve, got: {errors}")
+
     def test_empty_sources_block_fails(self):
         repo = self.valid_repo_for_verify()
         self.write(repo, ".akashic/wiki/index.md",
