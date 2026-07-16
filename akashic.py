@@ -633,6 +633,101 @@ def cmd_anchor(root):
     return 0
 
 
+# ---------------------------------------------------------------------- prompt
+
+# Common local-only agent-guidance filenames -- often excluded from git via
+# .git/info/exclude or a personal gitignore so one contributor's AI-alignment
+# notes don't leak into the shared repo. Fine to read for planning context;
+# never citable, since an untracked file may not exist for anyone else who
+# clones the repo. Hand-typing this reminder into every subagent prompt is
+# exactly the kind of mechanical step a human orchestrator forgets -- that
+# is why this is a script concern, not a prompt-writer's memory.
+CONTEXT_DOC_NAMES = [
+    "CLAUDE.md", "AGENTS.md", ".cursorrules", ".windsurfrules", "GEMINI.md",
+    ".github/copilot-instructions.md",
+]
+
+
+def expand_scope(root, scope):
+    tracked = tracked_files(root)
+    return sorted(p for p in tracked if scope and matches_any(p, scope))
+
+
+def find_context_docs(root):
+    tracked = set(tracked_files(root))
+    return [name for name in CONTEXT_DOC_NAMES
+            if (root / name).is_file() and name not in tracked]
+
+
+def render_prompt(root, catalog, page_id):
+    """Deterministically render the exact subagent prompt for one catalog
+    page (SKILL.md's page contract). No LLM judgment in this function --
+    it is plain string templating from catalog.json + the filesystem, so
+    every dispatch gets an identical, correct instantiation of the rules
+    (citable-file boundary, citation grammar, context-doc handling)."""
+    by_id = {p["id"]: p for p in catalog["pages"]}
+    page = by_id.get(page_id)
+    if page is None:
+        die(f"no such page \"{page_id}\" in catalog")
+    files = expand_scope(root, page.get("scope", []))
+    siblings = sorted((p["id"], p["title"]) for p in catalog["pages"]
+                      if p["id"] != page_id)
+    context_docs = find_context_docs(root)
+    head = git(root, "rev-parse", "HEAD").stdout.strip()
+    date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+
+    lines = [
+        f"Write the wiki page **{page['title']}** for the repository at {root}.",
+        f"Goal: {page['goal']}",
+        "Read these files -- this is also the ENTIRE set of files you may cite "
+        "in Sources: lines (paths relative to repo root):",
+    ]
+    lines += [f"  - {f}" for f in files] or [
+        "  (none matched -- fix this page's catalog scope before generating)"]
+    lines += ["", "Sibling pages for cross-links (id -> title):"]
+    lines += [f"  - {sid} -> {stitle}" for sid, stitle in siblings]
+    lines.append("")
+    if context_docs:
+        lines.append(
+            "This repo also has local-only agent-guidance docs present on disk "
+            "but NOT tracked by git (commonly excluded via .git/info/exclude or "
+            f"a personal gitignore): {', '.join(context_docs)}. Read them for "
+            "domain and convention context if useful -- but they are NOT in "
+            "your citable file list above. Never write a Sources: line pointing "
+            "at any of them. If a fact from one of them needs a citation, find "
+            "and cite the underlying tracked source code that implements it "
+            "instead, state it as general prose without a citation, or omit it.")
+        lines.append("")
+    lines += [
+        f"Write to `{AKASHIC_DIR}/{WIKI_DIRNAME}/{page_id}.md`, exactly this shape:",
+        f"- First line: `# {page['title']}`, then a one-paragraph orientation.",
+        "- H2 sections. Every H2 section ends with a citation paragraph: "
+        "`Sources: [path/to/file.ts:12-40](../../path/to/file.ts#L12-L40)` -- "
+        "the literal token `Sources:`, comma-separated markdown links, paths "
+        "relative to the page (repo root is `../../`), optional "
+        "`#L<start>-L<end>` with line numbers that are exactly right in the "
+        "current working tree (double-check every range against the actual "
+        "file before writing it). Only cite files from the list above. Never "
+        "`file://`, never absolute paths, never URLs on Sources lines.",
+        "- Plain Mermaid (no style directives) only where a diagram genuinely "
+        "clarifies; put a Sources: line directly under each diagram.",
+        "- Cross-reference the most relevant sibling pages as "
+        "`[Title](./other-id.md)` in prose.",
+        "- Cite-or-omit: prefer \"not documented here\" over invention.",
+        f"- Last line: *Generated from commit `{head[:8]}` on {date}.*",
+        f"- Prose language: {catalog.get('language', 'en')}. Structural tokens "
+        "(`Sources:`, heading syntax) stay as specified regardless of language.",
+    ]
+    return "\n".join(lines)
+
+
+def cmd_prompt(root, page_id):
+    if not page_id:
+        die("usage: akashic.py prompt <page-id>")
+    print(render_prompt(root, load_catalog(root), page_id))
+    return 0
+
+
 # ------------------------------------------------------------------------ main
 
 def main(argv=None):
@@ -646,9 +741,14 @@ def main(argv=None):
     sub.add_parser("stale", help="JSON report: stale/edited/orphaned/uncovered pages")
     sub.add_parser("verify", help="check pages, citations, and catalog invariants")
     sub.add_parser("anchor", help="record files/hashes, stamp anchor commit, render TOC")
+    prompt_parser = sub.add_parser(
+        "prompt", help="render the exact subagent prompt for one catalog page id")
+    prompt_parser.add_argument("page_id")
     args = parser.parse_args(argv)
 
     root = repo_root(args.path)
+    if args.command == "prompt":
+        return cmd_prompt(root, args.page_id)
     command = {"scan": cmd_scan, "stale": cmd_stale,
                "verify": cmd_verify, "anchor": cmd_anchor}[args.command]
     return command(root)

@@ -403,6 +403,52 @@ class TestReviewRegressions(RepoCase):
         self.assertEqual(errors, [],
                          f"forward link to a planned sibling must not fail verify, got: {errors}")
 
+    def test_prompt_expands_scope_and_flags_untracked_context_docs(self):
+        """The mechanical fix for the CLAUDE.md/AGENTS.md bug: rendering must
+        list only tracked, scope-matched files as citable, and separately
+        surface untracked context docs with the non-citable warning -- no
+        human has to remember to type this per subagent."""
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\n")
+        self.write(repo, "src/other.py", "b\n")
+        self.commit(repo)
+        self.write(repo, "CLAUDE.md", "local-only guidance\n")  # never git-added
+        self.catalog(repo, [
+            self.page("index", scope=["src/app.py"],
+                     goal="Orient a new developer."),
+            self.page("later", scope=["src/**"], status="planned"),
+        ])
+        root = akashic.repo_root(repo)
+        catalog = akashic.load_catalog(root)
+        out = akashic.render_prompt(root, catalog, "index")
+
+        self.assertIn("src/app.py", out)
+        self.assertNotIn("src/other.py", out,
+                         "must not list files outside this page's scope")
+        self.assertIn("later ->", out, "sibling list must include other pages")
+        self.assertIn("CLAUDE.md", out)
+        self.assertIn("NOT tracked by git", out)
+        self.assertIn("Orient a new developer.", out)
+
+    def test_prompt_omits_context_warning_when_none_present(self):
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/app.py"])])
+        root = akashic.repo_root(repo)
+        out = akashic.render_prompt(root, akashic.load_catalog(root), "index")
+        self.assertNotIn("NOT tracked by git", out)
+
+    def test_prompt_unknown_page_id_fails(self):
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/app.py"])])
+        root = akashic.repo_root(repo)
+        with self.assertRaises(SystemExit) as ctx:
+            akashic.render_prompt(root, akashic.load_catalog(root), "ghost")
+        self.assertEqual(ctx.exception.code, 2)
+
     def test_link_to_unknown_page_id_still_fails(self):
         repo = self.valid_repo_for_verify()
         self.write(repo, ".akashic/wiki/index.md",

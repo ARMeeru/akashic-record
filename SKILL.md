@@ -39,6 +39,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing` |
 | `verify` | check pages, citations, catalog invariants | errors, exit 1 if any |
 | `anchor` | record deps + hashes, stamp anchor commit, render TOC | summary |
+| `prompt <id>` | render the exact subagent prompt for one catalog page | text — dispatch it verbatim |
 
 Exit codes: 0 ok, 1 verification failure, 2 precondition/usage error (e.g. no git repo,
 no commits, too many files — relay these to the user verbatim; they are actionable).
@@ -85,7 +86,13 @@ no commits, too many files — relay these to the user verbatim; they are action
    `package.json`, `pyproject.toml`, …) belong to the index page's scope. A scope
    matching more than ~200 files means the page should be split.
 4. Generate every `planned` page with parallel subagents (all in one message), one per
-   page, using the page contract below. Flip each page's `status` to `"done"` as its
+   page. **Get each subagent's prompt by running `prompt <id>` — do not hand-write
+   it.** The page contract below documents what that output looks like and why, but
+   the script is the one that fills it in (scope-expanded file list, sibling
+   cross-links, untracked-context-doc detection); hand-typing this per page is how
+   the original CLAUDE.md/AGENTS.md citation bug happened. Append only the
+   operational reminders (target repo path, "don't run git-mutating commands" if
+   applicable) to the rendered text. Flip each page's `status` to `"done"` as its
    file lands. Interrupted? Just re-run: generate pages still `planned`.
 5. Run `verify`. Fix every error (repair citations or regenerate the page) and re-run
    until exit 0.
@@ -93,7 +100,7 @@ no commits, too many files — relay these to the user verbatim; they are action
 7. Offer to (a) add `Repo wiki: .akashic/wiki/README.md (architecture + module docs with source citations)`
    to the repo's CLAUDE.md, and (b) commit `.akashic/` (`docs: generate repo wiki`).
 
-## Page contract (subagent prompt template)
+## Page contract (what `prompt <id>` renders — reference only, do not hand-type)
 
 > Write the wiki page **{title}** for the repository at {repo}.
 > Goal: {goal}

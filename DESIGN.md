@@ -221,10 +221,23 @@ evolve; `frozen` entries pass through untouched; removals are reported, not sile
 
 ### Phase 2 — Generate (N parallel subagents, one per page)
 
-Each subagent receives: the `goal`, the `scope` file allowlist, the full TOC (for
-`./other-id.md` cross-links), and the citation contract (§3.3). It explores its files
-with Read/Grep — agentic exploration, no embeddings — and writes `wiki/<id>.md`. On
-success the orchestrator flips that page's `status` to `done`.
+Each subagent's prompt is **rendered by `akashic.py prompt <id>`, never hand-written**:
+the `goal`, the `scope`-expanded file allowlist (the *entire* citable set — nothing
+outside it may appear in a `Sources:` line), the sibling id→title list for
+`./other-id.md` cross-links, and the citation contract (§3.3). If the target repo has
+local-only agent-guidance docs on disk that aren't git-tracked (`CLAUDE.md`,
+`AGENTS.md`, `.cursorrules`, and similar — a common, deliberate convention, not a
+mistake to work around), the renderer detects them and appends an explicit note: read
+them for context, never cite them, cite the underlying tracked source instead. This
+mechanical templating exists because the orchestrating agent hand-constructing this
+same prompt from memory is exactly how the untracked-citation bug first shipped — a
+human (or an LLM standing in for one) forgetting one rule while typing one prompt.
+Moving the templating into the deterministic core removes that failure mode instead
+of just documenting it.
+
+The subagent explores its files with Read/Grep — agentic exploration, no embeddings —
+and writes `wiki/<id>.md`. On success the orchestrator flips that page's `status` to
+`done`.
 
 Standing generation instructions that matter:
 
