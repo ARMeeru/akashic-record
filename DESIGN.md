@@ -123,8 +123,17 @@ Reparenting here is a one-line catalog edit; no file moves, ever.
   frontmatter-free file as-is, CRLF→LF, strip trailing whitespace per line, strip
   trailing newlines, UTF-8 bytes). Never updated to match human text — its meaning is
   permanently "what the tool wrote," so edit detection is a pure comparison.
+  **`null` is the bless signal**: the orchestrator sets `hash` to null immediately
+  after (re)writing a page; `anchor` records a new hash only for pages whose hash is
+  null or whose content is unchanged, and preserves the recorded hash otherwise — a
+  changed body under a non-null hash is a human edit, and re-hashing it would launder
+  the `edited` marker away.
 - `frozen: true` — user-pinned entry: re-planning must never remove or rewrite it
   (DeepWiki `pages`-list semantics).
+- Glob semantics (`scope`, `exclude`): fnmatch with two gitignore-flavored
+  affordances — a slash-free pattern matches basenames at any depth (`*.snap`), and a
+  `**/` prefix also matches at the repo root (`**/*.snap` matches `top.snap`).
+  `files` entries are exact paths, never patterns.
 - One key per line, stable page ordering (array order = display order within a parent) →
   clean git diffs. A merge conflict in this file is a genuine semantic conflict about
   what the wiki should contain, small enough to resolve by hand. A 144-page Qoder wiki
@@ -233,10 +242,17 @@ Standing generation instructions that matter:
 
 - `akashic.py verify` — the deterministic QA gate for stochastic output:
   - every `done` page exists at `wiki/<id>.md` with an H1;
-  - every `Sources:` line parses; every citation resolves — path exists at HEAD,
-    **realpath stays inside the repo root** (path-traversal guard), line range within
-    file bounds;
+  - every `Sources:` paragraph parses (wrapped continuation lines included; fenced
+    code blocks ignored; a Sources block with zero parseable links is an error);
+  - every citation resolves — **the path is tracked by git with exactly that
+    spelling** (untracked/ignored/wrong-case paths can never appear in an
+    anchor-to-HEAD diff, so they would make the page permanently fresh), the
+    realpath stays inside the repo root (traversal guard), and the line range is
+    within file bounds;
   - every internal `./<id>.md` link targets an existing page.
+  Page ids are validated as slugs at catalog load in every command — an id is a
+  path component, so a non-slug id is a traversal vector, rejected at the trust
+  boundary.
   Failures print exact page/line and exit non-zero; the agent fixes or regenerates and
   re-verifies. The LLM phases have no unit tests — they have this gate.
 - `akashic.py anchor` — the only metadata mutation point: parse citations from each

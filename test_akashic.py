@@ -180,7 +180,8 @@ class TestVerify(RepoCase):
         self.write(repo, ".akashic/wiki/index.md",
                    "# Index\n\nSources: [x](../../src/nope.py)\n")
         errors = akashic.verify_repo(akashic.repo_root(repo))
-        self.assertTrue(any("cited file not found" in e for e in errors))
+        self.assertTrue(any("not tracked by git" in e for e in errors),
+                        f"nonexistent cited file must fail verify, got: {errors}")
 
     def test_scheme_url_in_sources_fails(self):
         repo = self.valid_repo()
@@ -241,6 +242,149 @@ class TestAnchor(RepoCase):
         with self.assertRaises(SystemExit) as ctx:
             akashic.anchor_repo(akashic.repo_root(repo))
         self.assertEqual(ctx.exception.code, 1)
+
+
+class TestReviewRegressions(RepoCase):
+    """One regression test per confirmed finding of the adversarial review."""
+
+    def test_second_anchor_preserves_edit_protection(self):
+        """CRITICAL: re-anchoring while a human edit exists must not launder
+        the edited marker away; hash: null is the explicit bless signal."""
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\nb\nc\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/**"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: [src/app.py:1-3](../../src/app.py#L1-L3)\n")
+        self.commit(repo, "wiki")
+        root = akashic.repo_root(repo)
+        akashic.anchor_repo(root)
+        tool_hash = akashic.load_catalog(root)["pages"][0]["hash"]
+
+        with open(repo / ".akashic/wiki/index.md", "a", encoding="utf-8") as fh:
+            fh.write("\nHuman correction.\n")
+        akashic.anchor_repo(root)  # a routine update run's terminal anchor
+        catalog = akashic.load_catalog(root)
+        self.assertEqual(catalog["pages"][0]["hash"], tool_hash,
+                         "anchor must never bless human-edited text")
+        self.assertEqual(akashic.compute_stale(root)["edited"], ["index"],
+                         "edit protection must survive re-anchoring")
+
+        catalog["pages"][0]["hash"] = None  # explicit bless (post-regeneration)
+        akashic.save_catalog(root, catalog)
+        akashic.anchor_repo(root)
+        self.assertEqual(akashic.compute_stale(root)["edited"], [])
+
+    def test_untracked_citation_fails_verify(self):
+        repo = self.valid_repo_for_verify()
+        self.write(repo, "src/untracked.py", "x\n")  # exists on disk, not in git
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: [u](../../src/untracked.py)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertTrue(any("not tracked by git" in e for e in errors),
+                        f"untracked citation must fail verify, got: {errors}")
+
+    def test_traversal_page_id_rejected_at_load(self):
+        repo = self.make_repo()
+        self.write(repo, "f.py", "x\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index")])
+        catalog = json.loads((repo / ".akashic/catalog.json").read_text())
+        catalog["pages"][0]["id"] = "../../../secret"
+        self.write(repo, ".akashic/catalog.json", json.dumps(catalog))
+        with self.assertRaises(SystemExit) as ctx:
+            akashic.compute_stale(akashic.repo_root(repo))
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_string_scope_rejected_at_load(self):
+        repo = self.make_repo()
+        self.write(repo, "f.py", "x\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index")])
+        catalog = json.loads((repo / ".akashic/catalog.json").read_text())
+        catalog["pages"][0]["scope"] = "src/**"  # string, not list
+        self.write(repo, ".akashic/catalog.json", json.dumps(catalog))
+        with self.assertRaises(SystemExit) as ctx:
+            akashic.verify_repo(akashic.repo_root(repo))
+        self.assertEqual(ctx.exception.code, 2)
+
+    def test_nul_byte_citation_reports_error_not_crash(self):
+        repo = self.valid_repo_for_verify()
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: [x](../../src/app%00.py#L1)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))  # must not raise
+        self.assertTrue(any("control characters" in e for e in errors))
+
+    def test_fenced_example_citation_ignored(self):
+        repo = self.valid_repo_for_verify()
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nReal section.\n\n"
+                   "Sources: [src/app.py:1-3](../../src/app.py#L1-L3)\n\n"
+                   "```markdown\nSources: [ghost](../../src/ghost.py#L1-L5)\n```\n")
+        root = akashic.repo_root(repo)
+        self.assertEqual(akashic.verify_repo(root), [],
+                         "fenced example citations must not be verified")
+        self.commit(repo, "wiki")
+        akashic.anchor_repo(root)
+        files = akashic.load_catalog(root)["pages"][0]["files"]
+        self.assertNotIn("src/ghost.py", files,
+                         "fenced example citations must not become dependencies")
+
+    def test_empty_sources_block_fails(self):
+        repo = self.valid_repo_for_verify()
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: see src/app.py lines 1-3\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertTrue(any("no parseable citation links" in e for e in errors))
+
+    def test_wrapped_sources_paragraph_is_verified(self):
+        """Citations on a Sources paragraph's continuation lines count."""
+        repo = self.valid_repo_for_verify()
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: [a](../../src/app.py#L1-L2),\n"
+                   "[b](../../src/app.py#L1-L99)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertTrue(any("line 4" in e and "exceeds file length" in e
+                            for e in errors),
+                        f"continuation-line citation must be checked, got: {errors}")
+
+    def test_matches_any_gitignore_affordances(self):
+        self.assertTrue(akashic.matches_any("top.snap", ["**/*.snap"]),
+                        "**/ prefix must also match at the repo root")
+        self.assertTrue(akashic.matches_any("a/b/top.snap", ["**/*.snap"]))
+        self.assertTrue(akashic.matches_any("a/b/x.snap", ["*.snap"]),
+                        "slash-free patterns match basenames at any depth")
+        self.assertTrue(akashic.matches_any("vendor/lib/x.js", ["vendor/**"]))
+        self.assertFalse(akashic.matches_any("src/x.py", ["**/*.snap"]))
+
+    def test_uncovered_filters_noise_and_exact_files_do_not_shadow(self):
+        repo = self.make_repo()
+        self.write(repo, "Makefile", "all:\n")
+        self.commit(repo)
+        anchor = self.head(repo)
+        self.catalog(repo, [self.page("index", files=["Makefile"])],
+                     anchor=anchor, exclude=["*.snap"])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: [m](../../Makefile)\n")
+        self.write(repo, "sub/dir/Makefile", "all:\n")   # new, same basename
+        self.write(repo, "package-lock.json", "{}\n")    # denylist noise
+        self.write(repo, "t.snap", "s\n")                # exclude-glob noise
+        self.commit(repo, "add files")
+
+        report = akashic.compute_stale(akashic.repo_root(repo))
+        self.assertEqual(report["uncovered"], ["sub/dir/Makefile"],
+                         "noise must be filtered; an exact files entry must not "
+                         "shadow same-named files at other depths")
+        self.assertEqual(report["stale"], [])
+
+    def valid_repo_for_verify(self):
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\nb\nc\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/**"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: [src/app.py:1-3](../../src/app.py#L1-L3)\n")
+        return repo
 
 
 if __name__ == "__main__":

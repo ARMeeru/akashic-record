@@ -14,8 +14,11 @@ next to this file.
 
 1. **The script is the only authority** for hashes, diffs, staleness, and citation
    validity. Never compute or guess any of those yourself; never edit the `anchor`,
-   `hash`, `files`, or `generated` fields of `catalog.json` by hand — only `anchor`
-   writes them.
+   `hash`, `files`, or `generated` fields of `catalog.json` by hand — with one
+   exception: **immediately after you (re)generate a page, set its `hash` to
+   `null`**. That is the bless signal; `anchor` only records a new hash for pages
+   whose hash is null or unchanged, and preserves the recorded hash of anything
+   else (human edits stay protected across anchors).
 2. **Never overwrite a page the script reports as `edited`.** That is detected human
    work. Regenerate it only when the user explicitly asks, and then pass the current
    human text into the generation prompt as immutable context to preserve.
@@ -90,8 +93,10 @@ no commits, too many files — relay these to the user verbatim; they are action
 >   `Sources: [src/auth/jwt.ts:42-88](../../src/auth/jwt.ts#L42-L88), [README.md](../../README.md)`
 >   — the literal token `Sources:`, comma-separated markdown links, paths relative to
 >   the page (repo root is `../../`), optional `#L<start>-L<end>` with line numbers
->   that are exactly right in the current working tree. Never `file://`, never
->   absolute paths, never URLs on Sources lines.
+>   that are exactly right in the current working tree. Cited paths must be tracked
+>   by git with exactly that spelling (verify rejects untracked, ignored, or
+>   wrong-case paths). Never `file://`, never absolute paths, never URLs on Sources
+>   lines.
 > - Plain Mermaid (no style directives) only where a diagram genuinely clarifies;
 >   put a `Sources:` line directly under each diagram.
 > - Cross-reference sibling pages as `[Title](./other-id.md)` in prose.
@@ -107,7 +112,8 @@ no commits, too many files — relay these to the user verbatim; they are action
 2. Act per bucket:
    - `stale` → regenerate each page (page contract, plus: "This page existed; its
      dependencies {changed} changed since the last anchor. Rewrite it to match the
-     current code — do not append a changelog.").
+     current code — do not append a changelog."). Set each regenerated page's
+     `hash` to `null` in the catalog (hard rule 1).
    - `missing` → regenerate from the catalog entry.
    - `edited` → **do not touch** (hard rule 2). List them for the user. A page in both
      `stale` and `edited` is reported as "stale but human-edited — needs manual review".

@@ -98,12 +98,29 @@ def load_catalog(root, required=True):
         die(f"{path.relative_to(root)}: unsupported or missing \"version\" (expected 1)")
     if not isinstance(catalog.get("pages"), list):
         die(f"{path.relative_to(root)}: \"pages\" must be a list")
+    rel = path.relative_to(root)
+    if not isinstance(catalog.get("exclude", []), list) or not all(
+            isinstance(x, str) for x in catalog.get("exclude", [])):
+        die(f"{rel}: \"exclude\" must be a list of strings")
+    if not isinstance(catalog.get("max_files", DEFAULT_MAX_FILES), int):
+        die(f"{rel}: \"max_files\" must be an integer")
     for i, page in enumerate(catalog["pages"]):
         if not isinstance(page, dict):
-            die(f"{path.relative_to(root)}: pages[{i}] is not an object")
+            die(f"{rel}: pages[{i}] is not an object")
         for key in ("id", "title", "goal"):
             if not isinstance(page.get(key), str) or not page.get(key):
-                die(f"{path.relative_to(root)}: pages[{i}] missing string \"{key}\"")
+                die(f"{rel}: pages[{i}] missing string \"{key}\"")
+        # ids are path components in every command; a non-slug id is a
+        # traversal vector, so this is a hard trust-boundary check.
+        if not SLUG_RE.match(page["id"]):
+            die(f"{rel}: pages[{i}] id \"{page['id']}\" is not a kebab-case slug")
+        for key in ("scope", "files"):
+            value = page.get(key, [])
+            if not isinstance(value, list) or not all(
+                    isinstance(x, str) for x in value):
+                die(f"{rel}: pages[{i}].{key} must be a list of strings")
+        if page.get("parent") is not None and not isinstance(page["parent"], str):
+            die(f"{rel}: pages[{i}].parent must be a string or null")
     return catalog
 
 
@@ -116,15 +133,33 @@ def save_catalog(root, catalog):
 
 
 def matches_any(path, patterns):
-    """fnmatch-style globs; a slash-free pattern also matches the basename
-    at any depth (so \"*.snap\" behaves like gitignore users expect)."""
+    """fnmatch-style globs with two gitignore-flavored affordances: a slash-free
+    pattern also matches the basename at any depth (\"*.snap\"), and a \"**/\"
+    prefix also matches at the root (\"**/*.snap\" matches \"top.snap\" —
+    plain fnmatch would require a slash)."""
     name = path.rsplit("/", 1)[-1]
     for pattern in patterns:
         if fnmatch.fnmatch(path, pattern):
             return True
+        if pattern.startswith("**/") and fnmatch.fnmatch(path, pattern[3:]):
+            return True
         if "/" not in pattern and fnmatch.fnmatch(name, pattern):
             return True
     return False
+
+
+def is_noise(path, excludes):
+    """The scan-time filter, shared with `uncovered` so stale never reports
+    files the wiki is configured to never see."""
+    parts = path.split("/")
+    if any(part in VENDOR_DIRS for part in parts):
+        return True
+    name = parts[-1]
+    if name in LOCKFILE_NAMES or name.endswith(NOISE_SUFFIXES):
+        return True
+    if path.startswith(AKASHIC_DIR + "/"):
+        return True
+    return bool(excludes) and matches_any(path, excludes)
 
 
 def tracked_files(root, at_head=False):
@@ -170,15 +205,7 @@ def scan_repo(root, catalog=None):
     max_files = (catalog or {}).get("max_files", DEFAULT_MAX_FILES)
     entries = []
     for path in tracked_files(root):
-        parts = path.split("/")
-        if any(part in VENDOR_DIRS for part in parts):
-            continue
-        name = parts[-1]
-        if name in LOCKFILE_NAMES or name.endswith(NOISE_SUFFIXES):
-            continue
-        if path.startswith(AKASHIC_DIR + "/"):
-            continue
-        if excludes and matches_any(path, excludes):
+        if is_noise(path, excludes):
             continue
         binary = is_binary(root / path)
         if binary or binary is None:
@@ -202,26 +229,51 @@ def cmd_scan(root):
 # ------------------------------------------------------------------- citations
 
 def parse_page_links(body_text):
-    """Return (sources_count, citations, wiki_links).
+    """Return (sources_blocks, citations, wiki_links, empty_sources).
 
-    citations: (lineno, raw_target) from `Sources:` lines.
-    wiki_links: (lineno, raw_target) for other .md links (cross-references).
+    A Sources block is a paragraph: the `Sources:` line plus following lines
+    until a blank line or heading (DESIGN.md 3.3 — wrapped citations count).
+    Fenced code blocks are ignored entirely: an example citation in a fence is
+    neither verified nor a dependency. empty_sources lists the start line of
+    any Sources block that yielded zero parseable links.
     """
-    sources_count = 0
-    citations = []
-    wiki_links = []
+    citations, wiki_links, empty_sources = [], [], []
+    sources_blocks = 0
+    in_fence = False
+    in_sources = False
+    block_start = block_links = 0
+
+    def close_block():
+        nonlocal in_sources
+        if in_sources and block_links == 0:
+            empty_sources.append(block_start)
+        in_sources = False
+
     for lineno, line in enumerate(body_text.split("\n"), start=1):
-        is_sources = bool(SOURCES_RE.match(line))
-        if is_sources:
-            sources_count += 1
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            close_block()
+            in_fence = not in_fence
+            continue
+        if in_fence:
+            continue
+        if SOURCES_RE.match(line):
+            close_block()
+            sources_blocks += 1
+            in_sources = True
+            block_start, block_links = lineno, 0
+        elif in_sources and (not stripped or stripped.startswith("#")):
+            close_block()
         for match in LINK_RE.finditer(line):
             target = match.group(2)
-            if is_sources:
+            if in_sources:
                 citations.append((lineno, target))
+                block_links += 1
             elif not SCHEME_RE.match(target) and not target.startswith("#") \
                     and target.split("#")[0].endswith(".md"):
                 wiki_links.append((lineno, target))
-    return sources_count, citations, wiki_links
+    close_block()
+    return sources_blocks, citations, wiki_links, empty_sources
 
 
 def resolve_citation(root, page_file, raw_target):
@@ -232,11 +284,13 @@ def resolve_citation(root, page_file, raw_target):
         return None, None, "URL schemes are not allowed in Sources (cite repo files)"
     if target.startswith("/"):
         return None, None, "absolute paths are not allowed; use paths relative to the page"
-    resolved = (page_file.parent / target).resolve()
+    if any(ord(ch) < 0x20 for ch in target):
+        return None, None, "control characters are not allowed in citation paths"
     try:
+        resolved = (page_file.parent / target).resolve()
         rel = resolved.relative_to(root)
-    except ValueError:
-        return None, None, f"resolves outside repository: {target}"
+    except (ValueError, OSError):
+        return None, None, f"resolves outside repository or is invalid: {target}"
     return rel.as_posix(), fragment, None
 
 
@@ -267,12 +321,10 @@ def verify_repo(root):
     by_id = {}
 
     for page in pages:
-        pid = page["id"]
+        pid = page["id"]  # slug-validated at load (trust boundary)
         if pid in by_id:
             errors.append(f"catalog: duplicate page id \"{pid}\"")
         by_id[pid] = page
-        if not SLUG_RE.match(pid):
-            errors.append(f"catalog: page id \"{pid}\" is not a kebab-case slug")
         if page.get("status", "planned") not in VALID_STATUS:
             errors.append(f"catalog: page \"{pid}\" has invalid status "
                           f"\"{page.get('status')}\"")
@@ -291,6 +343,11 @@ def verify_repo(root):
             parent = by_id[parent].get("parent")
 
     wiki = wiki_dir(root)
+    # Citations resolve against git's exact path strings, not the filesystem:
+    # untracked/ignored files can never appear in an anchor..HEAD diff (the page
+    # would be permanently fresh), and on case-insensitive filesystems is_file()
+    # accepts a wrong-case path that the diff intersection would never match.
+    tracked = set(tracked_files(root))
     for page in pages:
         if page.get("status") != "done":
             continue
@@ -306,10 +363,13 @@ def verify_repo(root):
         if not first.startswith("# "):
             errors.append(f"{pid}: {rel}: first non-empty line must be an H1 title")
 
-        sources_count, citations, wiki_links = parse_page_links(body)
-        if sources_count == 0:
+        sources_blocks, citations, wiki_links, empty_sources = parse_page_links(body)
+        if sources_blocks == 0:
             errors.append(f"{pid}: {rel}: no `Sources:` line (cite-or-omit; every page "
                           "cites at least one repo file)")
+        for lineno in empty_sources:
+            errors.append(f"{pid}: {rel} line {lineno}: Sources block has no "
+                          "parseable citation links")
 
         for lineno, raw in citations:
             path, fragment, err = resolve_citation(root, page_file, raw)
@@ -317,8 +377,18 @@ def verify_repo(root):
                 errors.append(f"{pid}: {rel} line {lineno}: {err}")
                 continue
             cited = root / path
+            if path.startswith(AKASHIC_DIR + "/"):
+                if not cited.is_file():
+                    errors.append(f"{pid}: {rel} line {lineno}: cited file not found: "
+                                  f"{path}")
+                continue
+            if path not in tracked:
+                errors.append(f"{pid}: {rel} line {lineno}: cited file is not tracked "
+                              f"by git (untracked, ignored, or wrong case): {path}")
+                continue
             if not cited.is_file():
-                errors.append(f"{pid}: {rel} line {lineno}: cited file not found: {path}")
+                errors.append(f"{pid}: {rel} line {lineno}: cited file missing from "
+                              f"working tree: {path}")
                 continue
             err = check_fragment(fragment, cited.read_bytes())
             if err:
@@ -440,11 +510,19 @@ def compute_stale(root):
         elif hits:
             report["stale"].append({"id": page["id"], "changed": hits})
 
-    covered = []
+    # Coverage: `files` entries are exact paths (never patterns — a recorded
+    # root Makefile must not shadow a new nested Makefile); `scope` is globs.
+    covered_files, covered_scopes = set(), []
     for page in catalog["pages"]:
-        covered.extend(page.get("files", []))
-        covered.extend(page.get("scope", []))
-    report["uncovered"] = sorted(p for p in added_now if not matches_any(p, covered))
+        covered_files.update(page.get("files", []))
+        covered_scopes.extend(page.get("scope", []))
+    excludes = catalog.get("exclude", [])
+    report["uncovered"] = sorted(
+        p for p in added_now
+        if p not in covered_files
+        and not matches_any(p, covered_scopes)
+        and not is_noise(p, excludes)
+        and is_binary(root / p) is not True)
     return report
 
 
@@ -501,7 +579,7 @@ def anchor_repo(root):
             continue
         page_file = wiki / f"{page['id']}.md"
         body = page_file.read_text(encoding="utf-8", errors="replace")
-        _, citations, _ = parse_page_links(body)
+        _, citations, _, _ = parse_page_links(body)
         cited = set()
         for _, raw in citations:
             path, _, err = resolve_citation(root, page_file, raw)
@@ -510,7 +588,20 @@ def anchor_repo(root):
         scope = page.get("scope", [])
         in_scope = {p for p in tracked if scope and matches_any(p, scope)}
         page["files"] = sorted(cited | in_scope)
-        page["hash"] = page_hash(page_file)
+
+        # The recorded hash permanently means "what the tool wrote". A null
+        # hash is the bless signal (the orchestrator sets it after writing a
+        # page). If the current text differs from the recorded hash, a human
+        # edited it — re-hashing here would launder the `edited` marker away
+        # and let the next update silently overwrite their work.
+        current = page_hash(page_file)
+        recorded = page.get("hash")
+        if recorded and current != recorded:
+            warn(f"page \"{page['id']}\" is human-edited; keeping its recorded "
+                 "hash so it stays protected (set \"hash\": null after an "
+                 "intentional regeneration to bless new content)")
+        else:
+            page["hash"] = current
         anchored += 1
 
     catalog["anchor"] = head
