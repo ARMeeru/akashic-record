@@ -249,7 +249,12 @@ Standing generation instructions that matter:
     anchor-to-HEAD diff, so they would make the page permanently fresh), the
     realpath stays inside the repo root (traversal guard), and the line range is
     within file bounds;
-  - every internal `./<id>.md` link targets an existing page.
+  - every internal `./<id>.md` link resolves to a page **id that exists in the
+    catalog** — not to a file that exists on disk. A link to a page whose status
+    is still `planned` is a valid forward reference (warned, not an error — a
+    partial wiki is a valid state, per §5, and pages routinely cross-link the
+    full sibling list before every sibling is generated); a link to an id absent
+    from the catalog entirely is the real bug and still fails verify.
   Page ids are validated as slugs at catalog load in every command — an id is a
   path component, so a non-slug id is a traversal vector, rejected at the trust
   boundary.

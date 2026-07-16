@@ -400,8 +400,20 @@ def verify_repo(root):
                 errors.append(f"{pid}: {rel} line {lineno}: {err}")
                 continue
             target = root / path
-            if wiki.resolve() in target.parents and not target.is_file():
-                errors.append(f"{pid}: {rel} line {lineno}: broken wiki link: {raw}")
+            if wiki.resolve() not in target.parents:
+                continue
+            target_id = target.stem
+            if target_id == "README":
+                continue  # derived at anchor time, not a catalog page
+            target_page = by_id.get(target_id)
+            if target_page is None:
+                errors.append(f"{pid}: {rel} line {lineno}: link to unknown page id "
+                              f"\"{target_id}\" (no such page in catalog): {raw}")
+            elif target_page.get("status") != "done":
+                # A forward reference to a planned sibling is expected during
+                # progressive/partial generation (DESIGN.md 5) -- not an error.
+                warn(f"{pid}: {rel} line {lineno}: forward link to not-yet-generated "
+                     f"page \"{target_id}\" (currently planned)")
 
     if wiki.is_dir():
         known = {f"{p['id']}.md" for p in pages} | {"README.md"}

@@ -46,10 +46,17 @@ no commits, too many files — relay these to the user verbatim; they are action
 ## Flow: generate (first run)
 
 1. Run `scan`. Relay precondition errors and stop if it fails.
-2. Read the repo's README and `.akashic/notes.md` if present (free-text steering —
-   honor it during planning). If a tokensave MCP or `graphify-out/` graph exists for
-   this repo, use them to identify modules, hotspots, and entry points; otherwise the
-   scan output plus targeted Grep is enough.
+2. Read the repo's README, `.akashic/notes.md` if present (free-text steering — honor
+   it during planning), and any pre-existing agent-guidance docs (`CLAUDE.md`,
+   `AGENTS.md`) for domain and convention context. If a tokensave MCP or
+   `graphify-out/` graph exists for this repo, use them to identify modules,
+   hotspots, and entry points; otherwise the scan output plus targeted Grep is
+   enough. **Reading a file for context and citing it as a `Sources:` dependency
+   are different things** — some of these files (notably `CLAUDE.md`/`AGENTS.md`)
+   are routinely kept local-only via `.git/info/exclude` and never committed;
+   `verify` will reject any citation to an untracked path. Use such files to write
+   accurate prose, but cite the underlying tracked source code, not the doc, for
+   any claim that needs a line-range citation.
 3. Write `.akashic/catalog.json`:
 
    ```json

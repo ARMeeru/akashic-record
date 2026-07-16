@@ -386,6 +386,32 @@ class TestReviewRegressions(RepoCase):
                    "# Index\n\nSources: [src/app.py:1-3](../../src/app.py#L1-L3)\n")
         return repo
 
+    def test_link_to_planned_sibling_is_not_broken(self):
+        """A partial wiki is a valid state (DESIGN.md 5): a done page may
+        cross-link a planned sibling without failing verify."""
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\nb\nc\n")
+        self.commit(repo)
+        self.catalog(repo, [
+            self.page("index", scope=["src/**"]),
+            self.page("later", scope=["src/**"], status="planned"),
+        ])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSee [Later](./later.md).\n\n"
+                   "Sources: [src/app.py:1-3](../../src/app.py#L1-L3)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertEqual(errors, [],
+                         f"forward link to a planned sibling must not fail verify, got: {errors}")
+
+    def test_link_to_unknown_page_id_still_fails(self):
+        repo = self.valid_repo_for_verify()
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSee [Ghost](./ghost-page.md).\n\n"
+                   "Sources: [src/app.py:1-3](../../src/app.py#L1-L3)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertTrue(any("unknown page id" in e for e in errors),
+                        f"a link to a nonexistent catalog id must still fail, got: {errors}")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
