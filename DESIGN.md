@@ -61,7 +61,8 @@ anchored. This split is the design's one non-negotiable.
 .akashic/
   catalog.json   # AUTHORITATIVE: settings + TOC plan + per-page state. The one metadata file.
   wiki/
-    README.md    # rendered nested TOC + project overview (GitHub auto-renders it)
+    README.md    # DERIVED nested TOC, rendered by `anchor` from the catalog — never
+                 # hand-edited, can never drift; the prose overview page is index.md
     <id>.md      # every page, FLAT — hierarchy lives only in catalog parent fields
   notes.md       # OPTIONAL free-text steering, injected verbatim into the planning prompt
 ```
@@ -143,13 +144,13 @@ One-paragraph orientation.
 Prose. Plain Mermaid where a diagram earns its place (no style directives — matches all
 sampled Qoder output; styling is the renderer's job).
 
-Sources: [src/auth/jwt.ts:42-88](../src/auth/jwt.ts#L42-L88), [src/middleware/auth.ts](../src/middleware/auth.ts)
+Sources: [src/auth/jwt.ts:42-88](../../src/auth/jwt.ts#L42-L88), [src/middleware/auth.ts](../../src/middleware/auth.ts)
 
 ## Session storage
 
 …
 
-Sources: [src/auth/session.ts:1-40](../src/auth/session.ts#L1-L40)
+Sources: [src/auth/session.ts:1-40](../../src/auth/session.ts#L1-L40)
 
 *Generated from commit `3f9c2e1` on 2026-07-16.*
 ```
@@ -159,9 +160,10 @@ Citation grammar (fixed, machine-parsed by `verify`):
 - A paragraph starting with the literal token `Sources:` followed by comma-separated
   markdown links. One per H2 section; a `Sources:` line directly under a Mermaid block
   cites that diagram.
-- Link target = repo-relative path via `../`, optional `#Lstart-Lend` fragment. These
-  render as working, line-highlighting links on GitHub — unlike Qoder's non-standard
-  `file://` scheme, which renders dead.
+- Link target = a path relative to the page (repo root is `../../` from
+  `.akashic/wiki/`), optional `#Lstart-Lend` fragment. These render as working,
+  line-highlighting links on GitHub — unlike Qoder's non-standard `file://` scheme,
+  which renders dead.
 - Line numbers are coordinates **in the anchor commit**.
 - **`Sources:` stays in English regardless of wiki language.** Qoder localizes its
   structural markers in zh wikis, which breaks any parser; here machine-read tokens are
@@ -239,8 +241,11 @@ Standing generation instructions that matter:
   re-verifies. The LLM phases have no unit tests — they have this gate.
 - `akashic.py anchor` — the only metadata mutation point: parse citations from each
   `done` page, set `files = scope-matched ∪ cited`, record body hashes, stamp
-  `anchor = HEAD` and `generated`. Warns if the working tree is dirty (the wiki may
-  describe uncommitted code).
+  `anchor = HEAD` and `generated`, and render `wiki/README.md` (the derived TOC).
+  Warns if the working tree is dirty (the wiki may describe uncommitted code).
+  `.akashic/` paths are never recorded as dependencies and never count as staleness
+  inputs — the wiki depending on itself would break the post-anchor invariant the
+  moment its artifacts are committed.
 
 Finally, the skill offers to add one line to the target repo's CLAUDE.md pointing at
 `.akashic/wiki/README.md`. That single line is the entire "wiki as agent context"
