@@ -478,6 +478,23 @@ class TestReviewRegressions(RepoCase):
             akashic.render_prompt(root, akashic.load_catalog(root), "ghost")
         self.assertEqual(ctx.exception.code, 2)
 
+    def test_citation_outside_scope_warns_not_errors(self):
+        """A page citing a real, correctly-resolved file outside its own
+        catalog scope is drift worth surfacing (scope may be too narrow or
+        too wide), but the citation itself isn't wrong -- warn, don't block
+        anchor."""
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\nb\nc\n")
+        self.write(repo, "other/thing.py", "x\ny\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/**"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: [src/app.py:1-3](../../src/app.py#L1-L3), "
+                   "[other/thing.py:1-2](../../other/thing.py#L1-L2)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertEqual(errors, [],
+                         f"an out-of-scope citation must not fail verify, got: {errors}")
+
     def test_link_to_unknown_page_id_still_fails(self):
         repo = self.valid_repo_for_verify()
         self.write(repo, ".akashic/wiki/index.md",

@@ -254,6 +254,15 @@ Standing generation instructions that matter:
   page's scope — project structure lives there, not in the file tree.
 - Generation order: parents before children, so an interrupted run leaves a coherent,
   shallower wiki rather than orphaned leaves.
+- **Scope, and only scope, is citable** — the rendered prompt states this as a hard
+  boundary, but nothing enforces it at generation time; a subagent can still cite a
+  real, correctly-resolved file outside its assigned scope (observed in practice: an
+  overview page whose 5-file scope couldn't substantiate its own "orient to the whole
+  package" goal, so the subagent grounded claims in five more files it read for
+  context). `verify` now warns (not errors — the citation itself isn't wrong) whenever
+  this happens, so the drift is visible instead of silent. Read it as a planning
+  signal in both directions: scope that's too *wide* produces duplicated content
+  (§7's admin-panel lesson); scope that's too *narrow* produces this.
 
 ### Phase 3 — Verify + anchor (script)
 

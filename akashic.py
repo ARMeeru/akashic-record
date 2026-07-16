@@ -404,6 +404,19 @@ def verify_repo(root):
             err = check_fragment(fragment, cited.read_bytes())
             if err:
                 errors.append(f"{pid}: {rel} line {lineno}: {path}: {err}")
+            # "Read these files -- this is the ENTIRE set you may cite" (the
+            # rendered prompt) is a promise nothing mechanically enforced
+            # until now. A citation outside the page's own scope isn't
+            # necessarily wrong -- the file is real and correctly resolved --
+            # but it's drift from the catalog's stated intent, and it's the
+            # same signal in both directions: scope too wide (duplicated
+            # content) or too narrow (the page needed more than it was
+            # given). Surface it; don't block anchor over it.
+            scope = page.get("scope", [])
+            if scope and not matches_any(path, scope):
+                warn(f"{pid}: {rel} line {lineno}: cites {path}, which is outside "
+                     "this page's catalog scope (not necessarily wrong -- consider "
+                     "whether scope should be widened, or the citation trimmed)")
 
         for lineno, raw in wiki_links:
             path, _, err = resolve_citation(root, page_file, raw)
