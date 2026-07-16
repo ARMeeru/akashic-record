@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": null,
-  "generated": null,
+  "anchor": "0def5db1815aeb3acbceb40d5f321e44f9cb785e",
+  "generated": "2026-07-16T04:38:06Z",
   "language": "en",
   "exclude": [],
   "max_files": 5000,
@@ -15,9 +15,12 @@
         "README.md",
         "DESIGN.md"
       ],
-      "files": [],
+      "files": [
+        "DESIGN.md",
+        "README.md"
+      ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:0c42474b4609aa613908be4e9a370c44b45a78dc6a70063c0eae088ba1c1f9f9",
       "frozen": false
     },
     {
@@ -29,9 +32,12 @@
         "akashic.py",
         "test_akashic.py"
       ],
-      "files": [],
+      "files": [
+        "akashic.py",
+        "test_akashic.py"
+      ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:e8ffb6656e01909b7caf162c0a36952d0861e6b343ecaa61a232b4957e98e21e",
       "frozen": false
     },
     {
@@ -42,9 +48,11 @@
       "scope": [
         "SKILL.md"
       ],
-      "files": [],
+      "files": [
+        "SKILL.md"
+      ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:77e5b8f3b7203880ad345754c322109a906da86163719cb9bdf934f6088a76a3",
       "frozen": false
     }
   ]
