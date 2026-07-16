@@ -178,6 +178,15 @@ Citation grammar (fixed, machine-parsed by `verify`):
   angle brackets per CommonMark (`(<../../app/[id]/route.ts#L1-L10>)`) instead of
   percent-encoding the brackets; the parser strips the wrapper before resolving.
 - Line numbers are coordinates **in the anchor commit**.
+- **A citation's end line may exceed the file's real line count by exactly one.**
+  Any file ending in a trailing newline (nearly all of them) displays one extra,
+  empty numbered line when read via Claude Code's Read tool — every subagent
+  independently trusts that number, since it's the one they're looking at. Rejecting
+  it would be pedantically correct (GitHub's own `#L<n>` anchors follow the `wc -l`
+  convention, so the phantom line technically doesn't exist) but costs nothing to
+  tolerate: the extra line is empty, so citing it highlights nothing extra on GitHub
+  either way. `check_fragment` accepts `end <= real_lines + 1`; anything further out
+  is still rejected as a real error.
 - **`Sources:` stays in English regardless of wiki language.** Qoder localizes its
   structural markers in zh wikis, which breaks any parser; here machine-read tokens are
   locale-invariant and only prose localizes.

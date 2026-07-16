@@ -158,6 +158,24 @@ class TestVerify(RepoCase):
         errors = akashic.verify_repo(akashic.repo_root(self.valid_repo()))
         self.assertEqual(errors, [])
 
+    def test_trailing_newline_off_by_one_tolerated(self):
+        """Claude's Read tool shows one extra (empty) numbered line for any
+        file ending in a trailing newline -- every subagent naturally cites
+        up to that number. Tolerate exactly +1; anything more is still an
+        error."""
+        repo = self.valid_repo()
+        self.write(repo, "src/app.py", "a\nb\nc\n")  # 3 real lines, trailing \n
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: [x](../../src/app.py#L1-L4)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertEqual(errors, [], f"+1 must be tolerated, got: {errors}")
+
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: [x](../../src/app.py#L1-L5)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertTrue(any("exceeds file length" in e for e in errors),
+                        "+2 must still be rejected as a real error")
+
     def test_out_of_range_citation_fails_naming_page_and_line(self):
         repo = self.valid_repo()
         self.write(repo, ".akashic/wiki/index.md",

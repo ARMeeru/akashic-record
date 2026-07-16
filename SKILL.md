@@ -118,7 +118,10 @@ no commits, too many files — relay these to the user verbatim; they are action
 >   paths, but don't rely on that gate — if a fact came from somewhere outside your
 >   file list, e.g. something the orchestrator mentioned for background, restate it
 >   without a citation rather than inventing one). Never `file://`, never absolute
->   paths, never URLs on Sources lines.
+>   paths, never URLs on Sources lines. **A file ending in a trailing newline shows
+>   one extra (empty) numbered line when you Read it** — `verify` tolerates that
+>   specific +1, so don't burn effort re-deriving the "true" last line with `wc -l`;
+>   just cite what Read shows you.
 > - Plain Mermaid (no style directives) only where a diagram genuinely clarifies;
 >   put a `Sources:` line directly under each diagram.
 > - Cross-reference sibling pages as `[Title](./other-id.md)` in prose.

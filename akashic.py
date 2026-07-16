@@ -316,7 +316,16 @@ def check_fragment(fragment, file_data):
     total = line_count(file_data)
     if start < 1 or start > end:
         return f"invalid line range #{fragment}"
-    if end > total:
+    # +1 tolerance: a file ending in a trailing newline splits into one more
+    # line than line_count()/`wc -l` report if you enumerate on "\n" without
+    # dropping the final empty segment -- exactly what Claude's Read tool
+    # does, so every citation naturally trusts a line count one higher than
+    # ours for the (huge majority of) files that end in a newline. The extra
+    # line is empty; citing it costs nothing on GitHub (nothing highlights)
+    # and rejecting it here just means every generation run needs a fix-up
+    # pass for a harmless, 100%-reproducible display artifact. Genuinely
+    # wrong ranges (more than one over) are still rejected.
+    if end > total + 1:
         return f"line range #{fragment} exceeds file length ({total} lines)"
     return None
 
