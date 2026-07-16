@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "anchor": null,
+  "generated": null,
+  "language": "en",
+  "exclude": [],
+  "max_files": 5000,
+  "pages": [
+    {
+      "id": "index",
+      "title": "Project Overview",
+      "parent": null,
+      "goal": "Orient a new developer in their first hour: what akashic-record is, the three artifacts (design doc, skill, deterministic core), the division of labor between LLM and script, and where to start reading.",
+      "scope": [
+        "README.md",
+        "DESIGN.md"
+      ],
+      "files": [],
+      "status": "done",
+      "hash": null,
+      "frozen": false
+    },
+    {
+      "id": "deterministic-core",
+      "title": "Deterministic Core",
+      "parent": null,
+      "goal": "Document akashic.py command by command: scan filtering, the stale bucket semantics and self-dependency exclusion, verify's citation gate, anchor's hash-preservation rule, and the invariants the test suite proves.",
+      "scope": [
+        "akashic.py",
+        "test_akashic.py"
+      ],
+      "files": [],
+      "status": "done",
+      "hash": null,
+      "frozen": false
+    },
+    {
+      "id": "skill-orchestration",
+      "title": "Skill Orchestration",
+      "parent": null,
+      "goal": "Explain how the Claude Code skill drives the pipeline: the generate/update/status flows, the page contract subagents receive, the hard rules (script authority, edit protection, cite-or-omit, hash-null bless signal), and how agents consume the wiki.",
+      "scope": [
+        "SKILL.md"
+      ],
+      "files": [],
+      "status": "done",
+      "hash": null,
+      "frozen": false
+    }
+  ]
+}
