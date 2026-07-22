@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "8ae2ecc066197d3aad529cab58bcd9720ac18b30",
-  "generated": "2026-07-16T12:41:28Z",
+  "anchor": "d6882155e214a3da4349922e663abf500ff02e34",
+  "generated": "2026-07-22T04:13:21Z",
   "language": "en",
   "exclude": [],
   "max_files": 5000,
@@ -13,14 +13,16 @@
       "goal": "Orient a new developer in their first hour: what akashic-record is, the three artifacts (design doc, skill, deterministic core), the division of labor between LLM and script, and where to start reading.",
       "scope": [
         "README.md",
-        "DESIGN.md"
+        "DESIGN.md",
+        "LICENSE"
       ],
       "files": [
         "DESIGN.md",
+        "LICENSE",
         "README.md"
       ],
       "status": "done",
-      "hash": "sha256:3e71e4b9cc8b5eca540d78d8da0b381518a51f9a959ad678638c48bb77f06e91",
+      "hash": "sha256:4b9fd3aca8b63dd72e1fe07f5e52eeb08a53c35b8b49b52e6b47f426775cff61",
       "frozen": false
     },
     {
