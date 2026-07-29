@@ -82,3 +82,11 @@ python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent pr
 ```sh
 python3 test_akashic.py
 ```
+
+## Roadmap
+
+- **M1 — The loop exists**: the wiki updates itself via PR; no-op cycles cost zero tokens.
+- **M2 — Cheap, reviewable cycles**: most update PRs are tiny; pure line drift costs zero tokens and can auto-merge.
+- **M3 — Trust, right-sized**: deterministic hallucination guards for free; deep audit on demand.
+
+Live status: [milestones](https://github.com/ARMeeru/akashic-record/milestones).
