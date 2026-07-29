@@ -1,9 +1,11 @@
 {
   "version": 1,
-  "anchor": "d6882155e214a3da4349922e663abf500ff02e34",
-  "generated": "2026-07-22T04:13:21Z",
+  "anchor": "f4be9e013d6964040edf75ab37c969afa9933520",
+  "generated": "2026-07-29T05:14:54Z",
   "language": "en",
-  "exclude": [],
+  "exclude": [
+    ".github/**"
+  ],
   "max_files": 5000,
   "pages": [
     {
@@ -14,15 +16,21 @@
       "scope": [
         "README.md",
         "DESIGN.md",
-        "LICENSE"
+        "LICENSE",
+        "CLAUDE.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md"
       ],
       "files": [
+        "CLAUDE.md",
+        "CONTRIBUTING.md",
         "DESIGN.md",
         "LICENSE",
-        "README.md"
+        "README.md",
+        "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:4b9fd3aca8b63dd72e1fe07f5e52eeb08a53c35b8b49b52e6b47f426775cff61",
+      "hash": "sha256:2db00e9127efd2e2e19430b28cc25a90d53f57048ec452fd041097dc4af7c2f7",
       "frozen": false
     },
     {

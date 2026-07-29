@@ -1,0 +1,44 @@
+name: Bug report
+description: Something akashic.py or the skill did wrong
+labels: ["bug"]
+body:
+  - type: input
+    id: command
+    attributes:
+      label: Command and exit code
+      description: The akashic.py subcommand you ran (or the skill flow) and its exit code (0 ok, 1 verification failure, 2 usage/precondition).
+      placeholder: "python3 akashic.py -C . stale → exit 1"
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Full output
+      description: Paste the complete output — especially the `stale`/`verify` JSON or error text.
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: "`python3 --version` and OS"
+      placeholder: "Python 3.12.4, macOS 15"
+    validations:
+      required: true
+  - type: textarea
+    id: repo-shape
+    attributes:
+      label: Target repo state
+      description: "Does the target repo have ≥1 commit? Is the anchor commit still reachable (`git cat-file -e <anchor>`)? Any hand-edits to `.akashic/` files?"
+    validations:
+      required: false
+  - type: dropdown
+    id: mode
+    attributes:
+      label: How was it run?
+      options:
+        - Standalone (python3 akashic.py …)
+        - Through the skill inside Claude Code
+    validations:
+      required: true
