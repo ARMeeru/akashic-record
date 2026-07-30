@@ -6,7 +6,7 @@ akashic-record is a repo wiki generator for Claude Code: it plans a page catalog
 
 Every codebase accumulates knowledge that lives nowhere but in the heads of whoever wrote it, and that knowledge goes stale the moment nobody updates a doc, or nobody wrote one. Hosted products like Qoder's Repo Wiki and DeepWiki solve this by generating a wiki from the code, but your code goes through someone else's pipeline and the output lives in their format. akashic-record does the same job — architecture pages with real source citations, kept fresh as the code changes — as a Claude Code skill: no service to trust with your code, no proprietary format, just markdown committed straight into the repo alongside the code it describes. The design states its own thesis in one sentence: Qoder Repo Wiki class output, built as a Claude Code skill plus one deterministic Python helper, keeping only the four patterns every surveyed system converged on and deleting everything else. That claim rests on documented research — Qoder's on-disk format reverse-engineered from committed wiki files across 180+ public repos, plus a comparative study of DeepWiki, DeepWiki-Open, OpenDeepWiki, CodeWiki, Mutable.ai Auto Wiki, and Google Code Wiki.
 
-Sources: [README.md:1-6](../../README.md#L1-L6), [README.md:8-20](../../README.md#L8-L20), [DESIGN.md:1-16](../../DESIGN.md#L1-L16)
+Sources: [README.md:1-6](../../README.md#L1-L6), [README.md:8-20](../../README.md#L8-L20), [DESIGN.md:1-15](../../DESIGN.md#L1-L15)
 
 ## Form factor and audiences
 
@@ -51,17 +51,19 @@ flowchart LR
     Verify --> Anchor["3b. Anchor (script): record deps/hashes, stamp commit, render TOC"]
 ```
 
-Sources: [DESIGN.md:207-212](../../DESIGN.md#L207-L212), [DESIGN.md:214-220](../../DESIGN.md#L214-L220), [DESIGN.md:227-238](../../DESIGN.md#L227-L238), [DESIGN.md:285-313](../../DESIGN.md#L285-L313)
+Sources: [DESIGN.md:215-220](../../DESIGN.md#L215-L220), [DESIGN.md:222-228](../../DESIGN.md#L222-L228), [DESIGN.md:235-250](../../DESIGN.md#L235-L250), [DESIGN.md:293-321](../../DESIGN.md#L293-L321)
 
 Two things about Phase 2 are worth knowing before you touch it. Each subagent's prompt is rendered by `akashic.py prompt <id>`, never hand-written — the mechanical template carries the goal, the scope-expanded file allowlist, the sibling id-to-title list, and the citation contract, because an agent hand-constructing that prompt from memory is how the untracked-citation bug first shipped. And the standing generation rule is cite-or-omit: prefer "not documented here" over invention, with a `Sources:` entry behind every non-obvious claim. Scope is the citable boundary, but nothing enforces it at generation time; `verify` warns rather than errors when a page cites a real file outside its scope, which is a planning signal — scope too wide duplicates content, scope too narrow forces the subagent outside it. There is a hard precondition on the whole pipeline: a git repo with at least one commit, failing loudly rather than degrading, because the anchor model depends on it.
 
-Sources: [DESIGN.md:244-258](../../DESIGN.md#L244-L258), [DESIGN.md:264-283](../../DESIGN.md#L264-L283), [DESIGN.md:222-225](../../DESIGN.md#L222-L225)
+Sources: [DESIGN.md:252-266](../../DESIGN.md#L252-L266), [DESIGN.md:274-291](../../DESIGN.md#L274-L291), [DESIGN.md:230-233](../../DESIGN.md#L230-L233)
 
 ## On-disk format and invariants
 
 Into a *target* repo the tool writes `.akashic/catalog.json` — the single authoritative metadata file, holding settings plus per-page id, title, parent, goal, scope, files, status, hash, and frozen flag — alongside flat pages at `.akashic/wiki/<id>.md` and `wiki/README.md`, a nested TOC re-derived on every `anchor` and never hand-edited. Hierarchy lives only in catalog `parent` fields, so reparenting is a one-line catalog edit and no file ever moves; an optional `notes.md` steers planning as free text injected verbatim. Repo-committed markdown is a deliberate choice: Qoder launched with an internal index and was pushed by users into in-repo markdown, and OpenDeepWiki's database storage is its most-criticized property. Git is the sync layer.
 
-Glob semantics matter more than they look. `scope` and `exclude` are fnmatch with two gitignore-flavored affordances — a slash-free pattern matches basenames at any depth, and a `**/` prefix also matches at the repo root — while `files` entries are always exact paths. `exclude` plus the built-in noise filter define the citable universe **once**, filtering `scan`, per-page `scope` expansion, and `uncovered` alike, so a broad `scope` glob cannot re-admit a file the catalog excluded.
+Glob semantics matter more than they look. `scope` and `exclude` are fnmatch with two gitignore-flavored affordances — a slash-free pattern matches basenames at any depth, and a `**/` prefix also matches at the repo root — while `files` entries are always exact paths, never patterns. `exclude` plus the built-in noise filter define the citable universe **once**, filtering `scan`, per-page `scope` expansion, and `uncovered` alike, so a broad `scope` glob cannot re-admit a file the catalog excluded.
+
+One deliberate subtraction from fnmatch: **literal `[` is escaped before matching, so character classes are not supported** in `scope` or `exclude` globs. Framework routing conventions put literal brackets in path segments — Next.js `[id]/route.ts` — far more often than a catalog wants a character class, and reading `[id]` as a class made the natural glob for such a path match nothing. Every symptom of that misreading was silent, in three places: files dropped from a page's citable set, files added under the scope never marking the page stale, and an `orphaned` false positive whose documented remediation deletes the page. `*` and `?` keep their glob meaning, and note that `*` still crosses `/` — making it single-segment would break existing catalogs and needs its own format change.
 
 A handful of invariants shape most of the code, and contributors must not break them:
 
@@ -72,7 +74,7 @@ A handful of invariants shape most of the code, and contributors must not break 
 - Immediately after `anchor`, `stale` is empty (tested); an unreachable anchor reports *all* pages stale rather than guessing.
 - Subagent prompts are rendered by `prompt <id>`, never hand-written.
 
-Sources: [DESIGN.md:58-73](../../DESIGN.md#L58-L73), [DESIGN.md:75-82](../../DESIGN.md#L75-L82), [DESIGN.md:133-139](../../DESIGN.md#L133-L139), [CLAUDE.md:44-54](../../CLAUDE.md#L44-L54), [CONTRIBUTING.md:11-16](../../CONTRIBUTING.md#L11-L16)
+Sources: [DESIGN.md:58-73](../../DESIGN.md#L58-L73), [DESIGN.md:75-82](../../DESIGN.md#L75-L82), [DESIGN.md:84-108](../../DESIGN.md#L84-L108), [DESIGN.md:133-147](../../DESIGN.md#L133-L147), [CLAUDE.md:44-54](../../CLAUDE.md#L44-L54), [CONTRIBUTING.md:11-16](../../CONTRIBUTING.md#L11-L16)
 
 ## The citation contract
 
@@ -86,13 +88,13 @@ Three details of the grammar exist because real paths and real tooling forced th
 
 Line numbers are coordinates in the anchor commit. How the generating side of this contract is enforced is covered in [Skill Orchestration](./skill-orchestration.md); the parser and its checks are in [Deterministic Core](./deterministic-core.md).
 
-Sources: [DESIGN.md:147-168](../../DESIGN.md#L147-L168), [DESIGN.md:170-188](../../DESIGN.md#L170-L188), [DESIGN.md:189-205](../../DESIGN.md#L189-L205)
+Sources: [DESIGN.md:155-182](../../DESIGN.md#L155-L182), [DESIGN.md:183-196](../../DESIGN.md#L183-L196), [DESIGN.md:197-206](../../DESIGN.md#L197-L206), [DESIGN.md:207-213](../../DESIGN.md#L207-L213)
 
 ## Incremental update
 
 The update mechanism is the convergent one across every shipped system: a stored commit anchor plus a diff plus a per-page file-dependency map, triggered by polling or by hand — never per-push webhooks. `akashic.py stale` is read-only and prints JSON. It first checks that the anchor is reachable; if a force-push or shallow clone made it unreachable it says so and reports all pages stale rather than guessing, because wasting a regeneration is acceptable and marking stale content fresh is not. Then it diffs anchor to HEAD with rename detection, counting a rename as both old and new path, and intersects the changed paths against each page's recorded `files`, plus `scope` globs for added files. The result sorts into four buckets: `stale` pages get regenerated under the same Phase-2 contract; `edited` pages, where the current body hash differs from the recorded one, are never auto-overwritten; `orphaned` pages, whose documented files are all gone, are auto-deleted unless they are also edited, in which case they are only flagged; and `uncovered` added files may become proposed new catalog entries. The run ends by regenerating, verifying, anchoring, and printing a structured report that becomes the commit message. Pages carry no in-page changelog sections — pages are timeless, and temporal data belongs to git.
 
-Sources: [DESIGN.md:319-342](../../DESIGN.md#L319-L342), [DESIGN.md:344-349](../../DESIGN.md#L344-L349)
+Sources: [DESIGN.md:327-350](../../DESIGN.md#L327-L350), [DESIGN.md:352-357](../../DESIGN.md#L352-L357)
 
 ## Getting started
 
@@ -110,7 +112,7 @@ python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent pr
 
 Exit codes: 0 ok, 1 verification failure, 2 usage or precondition error. There is no build step, no dependencies, and no lint config; the suite runs with `python3 test_akashic.py`, and single classes or tests can be named directly. Fixtures are throwaway git repos built in `tempfile`, one smallest-possible check per deterministic component; the LLM phases have no unit tests, because the runtime `verify` gate is their coverage.
 
-Sources: [README.md:51-78](../../README.md#L51-L78), [CLAUDE.md:18-38](../../CLAUDE.md#L18-L38), [README.md:80-84](../../README.md#L80-L84), [CLAUDE.md:56-58](../../CLAUDE.md#L56-L58), [DESIGN.md:413-427](../../DESIGN.md#L413-L427)
+Sources: [README.md:51-78](../../README.md#L51-L78), [CLAUDE.md:18-38](../../CLAUDE.md#L18-L38), [README.md:80-84](../../README.md#L80-L84), [CLAUDE.md:56-58](../../CLAUDE.md#L56-L58), [DESIGN.md:421-435](../../DESIGN.md#L421-L435)
 
 ## Contributing and dogfooding
 
@@ -118,7 +120,7 @@ The default branch is `develop`; branch from it and target PRs at it, with commi
 
 This repo carries its own generated wiki in `.akashic/` and follows the skill's own rules: never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, or `generated` fields (the one exception is setting `hash` to `null` right after regenerating a page), never edit the derived `wiki/README.md`, and after source changes refresh through the update flow — `stale`, regenerate, `verify`, `anchor` — committed as `chore: refresh self-dogfooded wiki`.
 
-Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:391-411](../../DESIGN.md#L391-L411), [README.md:86-92](../../README.md#L86-L92), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:60-62](../../CLAUDE.md#L60-L62)
+Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:399-419](../../DESIGN.md#L399-L419), [README.md:86-92](../../README.md#L86-L92), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:60-62](../../CLAUDE.md#L60-L62)
 
 ## Security and license
 
@@ -136,6 +138,6 @@ A reading order for the first hour:
 4. `DESIGN.md` in the repo root, when you need the normative answer to a format or behavior question — especially §2 (division of labor), §3.3 (the citation grammar), and §8 (what is deliberately not built). Its build order also doubles as a dependency order for reading the source: `akashic.py`, then `test_akashic.py`, then `SKILL.md`, then `README.md`.
 5. `CONTRIBUTING.md` before your first PR, for the invariants and the branch and commit conventions.
 
-Sources: [README.md:22-28](../../README.md#L22-L28), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:429-438](../../DESIGN.md#L429-L438), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
+Sources: [README.md:22-28](../../README.md#L22-L28), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:437-446](../../DESIGN.md#L437-L446), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
 
-*Generated from commit `496bd36d` on 2026-07-30.*
+*Generated from commit `4d66f0e6` on 2026-07-30.*

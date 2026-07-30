@@ -136,7 +136,15 @@ Reparenting here is a one-line catalog edit; no file moves, ever.
   `files` entries are exact paths, never patterns. `exclude` plus the built-in noise
   filter define the citable universe **once**: they filter `scan`, per-page `scope`
   expansion, and `uncovered` alike, so a broad `scope` glob cannot re-admit a file
-  the catalog excluded.
+  the catalog excluded. **Literal `[` is escaped before matching, so fnmatch
+  character classes are not supported** — framework routing conventions (Next.js
+  `[id]/route.ts`) put literal brackets in path segments far more often than a
+  catalog wants a class, and reading `[id]` as a class made the natural glob for
+  such a path match nothing. Every symptom was silent: files dropped from a page's
+  citable set, files added under the scope never marking the page stale, and an
+  `orphaned` false positive whose documented remediation deletes the page. `*` and
+  `?` keep their glob meaning; note `*` still crosses `/` (making it
+  single-segment would break existing catalogs and needs its own format change).
 - One key per line, stable page ordering (array order = display order within a parent) →
   clean git diffs. A merge conflict in this file is a genuine semantic conflict about
   what the wiki should contain, small enough to resolve by hand. A 144-page Qoder wiki

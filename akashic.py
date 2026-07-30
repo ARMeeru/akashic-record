@@ -143,18 +143,36 @@ def save_catalog(root, catalog):
     os.replace(tmp, path)
 
 
+def escape_brackets(pattern):
+    """Make \"[\" literal for fnmatch, so character classes are NOT supported
+    in scope/exclude globs. Framework routing conventions put literal brackets
+    in path segments (Next.js \"[id]/route.ts\") far more often than a catalog
+    wants a one-character class, and reading \"[id]\" as a class made the
+    natural glob for such a path match nothing -- silently: files vanished
+    from a page's citable set, files added under the scope never marked the
+    page stale (marking stale content fresh is the one thing this tool must
+    never do), and the rescue clause that keeps a rewritten module from being
+    called `orphaned` failed, producing a false positive whose documented
+    remediation deletes the page. \"*\" and \"?\" keep their glob meaning; a
+    lone \"]\" is already literal to fnmatch."""
+    return pattern.replace("[", "[[]")
+
+
 def matches_any(path, patterns):
     """fnmatch-style globs with two gitignore-flavored affordances: a slash-free
     pattern also matches the basename at any depth (\"*.snap\"), and a \"**/\"
     prefix also matches at the root (\"**/*.snap\" matches \"top.snap\" —
-    plain fnmatch would require a slash)."""
+    plain fnmatch would require a slash). Literal brackets survive matching
+    (see escape_brackets); slicing after escaping is safe because escaping
+    never touches the \"**/\" prefix."""
     name = path.rsplit("/", 1)[-1]
     for pattern in patterns:
-        if fnmatch.fnmatch(path, pattern):
+        escaped = escape_brackets(pattern)
+        if fnmatch.fnmatch(path, escaped):
             return True
-        if pattern.startswith("**/") and fnmatch.fnmatch(path, pattern[3:]):
+        if pattern.startswith("**/") and fnmatch.fnmatch(path, escaped[3:]):
             return True
-        if "/" not in pattern and fnmatch.fnmatch(name, pattern):
+        if "/" not in pattern and fnmatch.fnmatch(name, escaped):
             return True
     return False
 
