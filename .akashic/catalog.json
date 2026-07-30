@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "f4be9e013d6964040edf75ab37c969afa9933520",
-  "generated": "2026-07-29T05:14:54Z",
+  "anchor": "496bd36d7ed08b1b8282a3bda0be21cfc8af127a",
+  "generated": "2026-07-30T09:53:30Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,7 +30,7 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:2db00e9127efd2e2e19430b28cc25a90d53f57048ec452fd041097dc4af7c2f7",
+      "hash": "sha256:51b7e664468488ba71121cf1f24e73bdfb8f3bf439c25174a0f6251168e3fe07",
       "frozen": false
     },
     {
@@ -47,7 +47,7 @@
         "test_akashic.py"
       ],
       "status": "done",
-      "hash": "sha256:d84710fc89768c6bf00172c912f22eeef9ca8c42a02e5b139b55f98cc9c48562",
+      "hash": "sha256:777611b1f9e823755e96038427f040f7faae87408dc4e3dd3147a03b512246d4",
       "frozen": false
     },
     {
