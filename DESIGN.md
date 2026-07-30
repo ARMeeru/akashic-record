@@ -133,7 +133,10 @@ Reparenting here is a one-line catalog edit; no file moves, ever.
 - Glob semantics (`scope`, `exclude`): fnmatch with two gitignore-flavored
   affordances — a slash-free pattern matches basenames at any depth (`*.snap`), and a
   `**/` prefix also matches at the repo root (`**/*.snap` matches `top.snap`).
-  `files` entries are exact paths, never patterns.
+  `files` entries are exact paths, never patterns. `exclude` plus the built-in noise
+  filter define the citable universe **once**: they filter `scan`, per-page `scope`
+  expansion, and `uncovered` alike, so a broad `scope` glob cannot re-admit a file
+  the catalog excluded.
 - One key per line, stable page ordering (array order = display order within a parent) →
   clean git diffs. A merge conflict in this file is a genuine semantic conflict about
   what the wiki should contain, small enough to resolve by hand. A 144-page Qoder wiki
@@ -177,6 +180,12 @@ Citation grammar (fixed, machine-parsed by `verify`):
   `[id]/route.ts` is the case that surfaced it), the destination may be wrapped in
   angle brackets per CommonMark (`(<../../app/[id]/route.ts#L1-L10>)`) instead of
   percent-encoding the brackets; the parser strips the wrapper before resolving.
+  Destinations containing **balanced parentheses** — framework route groups such as
+  Next.js `api/(cron)/route.ts` — are parsed natively, bare or angle-wrapped (one
+  nesting level, which is all a real path needs); percent-encoding them is accepted
+  but unnecessary. A destination parser that stops at the first `)` is not merely
+  incomplete: the truncated prefix still resolves, so a real cited file gets
+  reported as untracked instead of failing to parse.
 - Line numbers are coordinates **in the anchor commit**.
 - **A citation's end line may exceed the file's real line count by exactly one.**
   Any file ending in a trailing newline (nearly all of them) displays one extra,

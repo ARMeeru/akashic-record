@@ -43,7 +43,14 @@ SOURCES_RE = re.compile(r"^Sources:\s*(.*)$")
 # and dynamic-route frameworks (Next.js "[id]/route.ts") put unescaped "]"
 # characters inside that path. [^\]]* stops at the first one and never finds
 # the real "](" delimiter, silently reporting zero links for a valid citation.
-LINK_RE = re.compile(r"\[(.*?)\]\(([^)\s]+)\)")
+# The destination alternates CommonMark's <...> wrapper (stripped in
+# resolve_citation) with a bare form allowing ONE level of balanced
+# parentheses: framework route groups name path segments that way (Next.js
+# "api/(cron)/route.ts"), and a plain [^)\s]+ truncates at the first ")".
+# That truncation is the dangerous kind -- the shortened prefix still
+# resolves to a path, so resolve_citation returns no error and the citation
+# fails verification as "not tracked by git" instead of parsing correctly.
+LINK_RE = re.compile(r"\[(.*?)\]\((<[^<>]*>|(?:[^()\s]|\([^()\s]*\))+)\)")
 FRAGMENT_RE = re.compile(r"^L(\d+)(?:-L(\d+))?$")
 SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
 VALID_STATUS = {"planned", "done"}
@@ -681,9 +688,18 @@ CONTEXT_DOC_NAMES = [
 ]
 
 
-def expand_scope(root, scope):
-    tracked = tracked_files(root)
-    return sorted(p for p in tracked if scope and matches_any(p, scope))
+def expand_scope(root, scope, excludes=()):
+    """Scope-matched tracked files, filtered exactly as `scan` filters the
+    planner's view. Sharing one definition of the citable universe is the
+    point: otherwise `exclude` globs, lockfiles, minified assets, and
+    binaries are dropped from planning yet still land in a page's "read
+    these files -- this is also the ENTIRE set you may cite" list, and
+    `verify` accepts citations to them. A `scope` glob must not be able to
+    re-admit what the catalog excluded."""
+    return sorted(p for p in tracked_files(root)
+                  if scope and matches_any(p, scope)
+                  and not is_noise(p, excludes)
+                  and is_binary(root / p) is False)
 
 
 def find_context_docs(root):
@@ -702,7 +718,7 @@ def render_prompt(root, catalog, page_id):
     page = by_id.get(page_id)
     if page is None:
         die(f"no such page \"{page_id}\" in catalog")
-    files = expand_scope(root, page.get("scope", []))
+    files = expand_scope(root, page.get("scope", []), catalog.get("exclude", []))
     siblings = sorted((p["id"], p["title"]) for p in catalog["pages"]
                       if p["id"] != page_id)
     context_docs = find_context_docs(root)

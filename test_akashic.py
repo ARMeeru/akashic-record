@@ -377,6 +377,38 @@ class TestReviewRegressions(RepoCase):
         self.assertEqual(errors, [],
                          f"an angle-bracket-wrapped destination must resolve, got: {errors}")
 
+    def test_route_group_paren_path_citation_parses(self):
+        """Framework route groups put literal parentheses in a path segment
+        (Next.js "api/(cron)/route.ts"). A [^)\\s]+ destination truncates at
+        the first ")", and because the truncated prefix still resolves to a
+        path, the citation failed as "not tracked by git" -- a real file
+        reported as a bogus one."""
+        repo = self.make_repo()
+        self.write(repo, "app/api/(cron)/route.ts", "a\nb\nc\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["app/**"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: "
+                   "[app/api/(cron)/route.ts:1-3](../../app/api/(cron)/route.ts#L1-L3)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertEqual(errors, [],
+                         f"a route-group path with parentheses must parse, got: {errors}")
+
+    def test_angle_wrapped_paren_path_resolves(self):
+        """The <...> escape hatch must work for paren paths too: it was
+        defeated by the same truncation, so the documented workaround for
+        awkward destinations silently did not work."""
+        repo = self.make_repo()
+        self.write(repo, "app/api/(cron)/route.ts", "a\nb\nc\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["app/**"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nSources: "
+                   "[app/api/(cron)/route.ts:1-3](<../../app/api/(cron)/route.ts#L1-L3>)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertEqual(errors, [],
+                         f"an angle-wrapped paren path must resolve, got: {errors}")
+
     def test_empty_sources_block_fails(self):
         repo = self.valid_repo_for_verify()
         self.write(repo, ".akashic/wiki/index.md",
@@ -485,6 +517,29 @@ class TestReviewRegressions(RepoCase):
         root = akashic.repo_root(repo)
         out = akashic.render_prompt(root, akashic.load_catalog(root), "index")
         self.assertNotIn("NOT tracked by git", out)
+
+    def test_prompt_scope_expansion_applies_scan_filters(self):
+        """`exclude` globs and built-in noise must not reach a page's citable
+        file list. scan and expand_scope share one definition of the citable
+        universe -- otherwise a broad `scope` glob quietly re-admits exactly
+        what the catalog excluded, and verify accepts citations to it."""
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\n")
+        self.write(repo, "src/bundle.min.js", "x\n")
+        self.write(repo, "src/package-lock.json", "{}\n")
+        self.write(repo, "src/fixture.snap", "snap\n")
+        self.write(repo, "src/logo.bin", b"\x00\x01binary")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/**"])],
+                     exclude=["*.snap"])
+        root = akashic.repo_root(repo)
+        out = akashic.render_prompt(root, akashic.load_catalog(root), "index")
+
+        self.assertIn("src/app.py", out)
+        for dropped in ("bundle.min.js", "package-lock.json",
+                        "fixture.snap", "logo.bin"):
+            self.assertNotIn(dropped, out,
+                             f"{dropped} must not be offered as a citable file")
 
     def test_prompt_unknown_page_id_fails(self):
         repo = self.make_repo()
