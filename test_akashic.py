@@ -436,6 +436,55 @@ class TestReviewRegressions(RepoCase):
         self.assertTrue(akashic.matches_any("vendor/lib/x.js", ["vendor/**"]))
         self.assertFalse(akashic.matches_any("src/x.py", ["**/*.snap"]))
 
+    def test_matches_any_treats_brackets_as_literal(self):
+        """Framework route paths contain literal brackets (Next.js
+        "[id]/route.ts"). fnmatch reads "[id]" as a one-character class, so
+        the natural scope glob for such a path silently matched nothing."""
+        self.assertTrue(akashic.matches_any(
+            "src/app/api/users/[id]/route.ts",
+            ["src/app/api/users/[id]/route.ts"]),
+            "a bracket-literal path must match its own exact pattern")
+        self.assertTrue(akashic.matches_any(
+            "src/app/api/users/[id]/route.ts", ["src/app/api/users/[id]/*"]))
+        self.assertTrue(akashic.matches_any(
+            "src/app/api/users/[id]/image/[attachmentId]/route.ts",
+            ["src/app/api/users/[id]/image/*"]),
+            "nested bracketed segments must match too")
+        self.assertFalse(akashic.matches_any(
+            "src/app/api/users/i/route.ts",
+            ["src/app/api/users/[id]/route.ts"]),
+            "the character-class reading must be gone, not just widened")
+        # both gitignore affordances still hold with brackets in play
+        self.assertTrue(akashic.matches_any("a/[id]/route.ts",
+                                           ["**/[id]/route.ts"]))
+        self.assertTrue(akashic.matches_any("a/b/[id].md", ["[id].md"]))
+
+    def test_bracket_scope_page_is_not_falsely_orphaned(self):
+        """The clause that keeps a rewritten module from being reported
+        `orphaned` runs through matches_any. With brackets broken it saw no
+        surviving in-scope file and reported orphaned -- and SKILL.md resolves
+        orphaned by deleting the page and its catalog entry, so a silent glob
+        defect became a data-loss path."""
+        repo = self.make_repo()
+        self.write(repo, "src/app/api/users/[id]/old.ts", "gone\n")
+        self.write(repo, "src/app/api/users/[id]/route.ts", "kept\n")
+        self.commit(repo)
+        anchor = self.head(repo)
+        self.write(repo, ".akashic/wiki/a.md", "# A\n\nSources: "
+                   "[route](../../src/app/api/users/[id]/route.ts)\n")
+        self.catalog(repo, [self.page("a",
+                                     files=["src/app/api/users/[id]/old.ts"],
+                                     scope=["src/app/api/users/[id]/*"])],
+                     anchor=anchor)
+        (repo / "src/app/api/users/[id]/old.ts").unlink()
+        self.commit(repo, "drop old.ts, keep route.ts")
+
+        report = akashic.compute_stale(akashic.repo_root(repo))
+        self.assertEqual(report["orphaned"], [],
+                         "a page whose scope still matches a tracked file is "
+                         "stale, never orphaned")
+        self.assertEqual([s["id"] for s in report["stale"]], ["a"])
+
     def test_uncovered_filters_noise_and_exact_files_do_not_shadow(self):
         repo = self.make_repo()
         self.write(repo, "Makefile", "all:\n")
