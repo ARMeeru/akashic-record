@@ -340,6 +340,29 @@ Standing generation instructions that matter:
     would train the operator to ignore the class. The search is the whole cited file
     rather than the cited span: a page legitimately names a symbol defined elsewhere in
     the same module, and the aim is catching invention, not policing line numbers.
+  - **anchored content still cited** (warning): a range check that asks about content
+    rather than bounds. `verify` proves a citation lands inside its file, so a citation
+    rewritten to plausible-but-wrong numbers passes every gate — three separate
+    mechanical fixes to this repo's own wiki shipped ranges landing on a stray bracket,
+    on blank lines, and mid-regex, and all three verified clean. Nothing new is recorded
+    to close it: `ranges` are already in anchor coordinates and the anchor commit is
+    already stored, so the tool reads what a span actually held (`git show
+    <anchor>:<path>`), locates that content in the working tree, and warns when no
+    citation on the page covers where it landed. Relocation matches the **pair** of
+    first and last non-blank lines, preferring the recorded span's length; single-line
+    matching left a fifth of this repo's spans unresolvable, since boundary lines repeat
+    (`}`, `)`, a bare `return`). Uniqueness is required — ambiguity yields no answer,
+    because a wrong relocation would produce exactly the confidently-wrong numbers this
+    check exists to catch. Reported once per file rather than per span: one edit moves
+    every span in a file, and twenty near-identical warnings is how a class gets
+    filtered out unread. Silent when the anchor is unreachable, since every page is
+    reported stale in that state anyway.
+    Rejected on measurement, recorded so they are not re-proposed: warning when a range
+    starts or ends on a **bare closing bracket** fires on 65% of citations in a
+    TypeScript repo, `}` being the normal end of a function; checking a section's
+    identifiers against its **cited spans** instead of its cited files fires on 5.7%,
+    and spot-checks were legitimate cross-references — the exact case the identifier
+    check above already excludes on purpose.
   Page ids are validated as slugs at catalog load in every command — an id is a
   path component, so a non-slug id is a traversal vector, rejected at the trust
   boundary.

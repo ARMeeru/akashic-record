@@ -645,6 +645,77 @@ class TestReviewRegressions(RepoCase):
         self.assertEqual(errors, [])
         self.assertNotIn("imaginary_helper", stderr)
 
+    def anchored_range_repo(self, page_cites, prelude=""):
+        """A repo anchored with `body()` cited at 1-3, then `prelude` lines
+        inserted above it so the function moves. The page ends up citing
+        whatever `page_cites` says, which is the variable under test."""
+        repo = self.make_repo()
+        original = "def body():\n    x = 1\n    return x\n"
+        self.write(repo, "src/app.py", original)
+        self.commit(repo)
+        page = ("# Index\n\n## Behaviour\n\nDescribes the body.\n\n"
+                "Sources: [src/app.py:1-3](../../src/app.py#L1-L3)\n")
+        self.write(repo, ".akashic/wiki/index.md", page)
+        self.catalog(repo, [self.page("index", files=["src/app.py"],
+                                      scope=["src/*"])])
+        root = akashic.repo_root(repo)
+        akashic.anchor_repo(root)  # records ranges in these coordinates
+        self.commit(repo, "wiki")
+
+        self.write(repo, "src/app.py", prelude + original)
+        self.commit(repo, "shift it")
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\n## Behaviour\n\nDescribes the body.\n\n"
+                   f"Sources: {page_cites}\n")
+        return root
+
+    def test_a_citation_moved_to_the_wrong_lines_is_warned_about(self):
+        """The gap this closes. `verify` proves a range is inside the file, so
+        a citation rewritten to plausible-but-wrong numbers passes every gate:
+        three mechanical fixes to this repo's own wiki shipped exactly that.
+        `ranges` are in anchor coordinates and the anchor commit is recorded,
+        so the tool can read what a span held and find where it went."""
+        root = self.anchored_range_repo(
+            "[src/app.py:1-3](../../src/app.py#L1-L3)",  # stale numbers
+            prelude="# a\n# b\n# c\n# d\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [], "must never block anchor")
+        self.assertIn("anchored to in src/app.py", stderr)
+        self.assertIn("5-7", stderr, f"must name where it went: {stderr!r}")
+
+    def test_a_correctly_rederived_citation_is_silent(self):
+        """The other direction. If this ever warns on a correct refresh, the
+        whole class gets filtered out unread."""
+        root = self.anchored_range_repo(
+            "[src/app.py:5-7](../../src/app.py#L5-L7)",  # right numbers
+            prelude="# a\n# b\n# c\n# d\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("anchored to", stderr)
+
+    def test_repeated_boundary_lines_produce_no_guess(self):
+        """A wrong relocation would produce exactly the confidently-wrong line
+        numbers this check exists to catch, so ambiguity yields no answer."""
+        root = self.anchored_range_repo(
+            "[src/app.py:1-3](../../src/app.py#L1-L3)",  # stale numbers
+            prelude="def body():\n    x = 1\n    return x\n\n# pad\n\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("anchored to", stderr)
+
+    def test_unreachable_anchor_says_nothing(self):
+        """Every page is already reported stale in that state, so a warning per
+        span would be noise on every shallow clone."""
+        root = self.anchored_range_repo(
+            "[src/app.py:1-3](../../src/app.py#L1-L3)",
+            prelude="# a\n# b\n# c\n# d\n")
+        catalog = akashic.load_catalog(root)
+        catalog["anchor"] = "0" * 40
+        akashic.save_catalog(root, catalog)
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("anchored to", stderr)
+
     def test_h2_sections_ignores_headings_inside_fences(self):
         body = ("# Title\n\n## One\n\ntext\n\n```md\n## Not a section\n```\n\n"
                 "## Two\n\nmore\n")
