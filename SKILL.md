@@ -38,11 +38,12 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | Command | Does | Output |
 |---|---|---|
 | `scan` | filtered file list with line counts (planner input) | `lines<TAB>path` |
-| `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned` |
+| `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned/drifted` |
 | `stale --check` | same report, plus exit 1 when any bucket is non-empty | zero-token gate for a scheduled runner |
 | `verify` | check pages, citations, catalog invariants | errors, exit 1 if any |
 | `anchor` | record deps + hashes, stamp anchor commit, render TOC | summary |
 | `prompt <id>` | render the exact subagent prompt for one catalog page | text — dispatch it verbatim |
+| `remap` | shift citations whose lines moved without changing; no LLM | summary |
 | `bless <id>...` | mark pages as tool-written after regenerating them (`hash` → null); `--done` also flips `status` | summary |
 
 Exit codes: 0 ok, 1 verification failure, 2 precondition/usage error (e.g. no git repo,
@@ -151,6 +152,10 @@ no commits, too many files — relay these to the user verbatim; they are action
      dependencies {changed} changed since the last anchor. Rewrite it to match the
      current code — do not append a changelog."). Run `bless <id>` on each page
      you regenerate (hard rule 1).
+   - `drifted` → **run `remap`, do not regenerate.** The cited lines moved but their
+     content did not, so the fix is arithmetic: `remap` shifts each fragment and its
+     human-readable text, blesses the page, and costs nothing. Regenerating these would
+     spend a subagent to retype prose that was already correct.
    - `missing` → regenerate from the catalog entry.
    - `edited` → **do not touch** (hard rule 2). List them for the user. A page in both
      `stale` and `edited` is reported as "stale but human-edited — needs manual review".
