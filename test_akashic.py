@@ -17,7 +17,9 @@ import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parent / "bin"))
 import akashic  # noqa: E402
+import akashic_loop  # noqa: E402
 
 
 def sh(cwd, *args):
@@ -780,6 +782,81 @@ class TestReviewRegressions(RepoCase):
         errors = akashic.verify_repo(akashic.repo_root(repo))
         self.assertTrue(any("unknown page id" in e for e in errors),
                         f"a link to a nonexistent catalog id must still fail, got: {errors}")
+
+
+class TestLoop(RepoCase):
+    """The runner's decision layer. The LLM invocation itself is not covered:
+    it shells out to `claude -p`, and a test that stubbed it would only assert
+    the stub. What is covered is everything that decides whether to spend."""
+
+    def test_repo_list_ignores_comments_blanks_and_expands_home(self):
+        text = ("# fleet\n"
+                "/srv/one\n"
+                "\n"
+                "   /srv/two   # trailing note\n"
+                "~/three\n")
+        repos = akashic_loop.read_repo_list(text)
+        self.assertEqual(repos[:2], ["/srv/one", "/srv/two"])
+        self.assertTrue(repos[2].endswith("/three"))
+        self.assertNotIn("~", repos[2], "~ must be expanded, not passed to git")
+
+    def test_edited_only_is_never_handed_to_an_llm(self):
+        """Hard rule 2: a human edited that page, so regenerating is the wrong
+        response. It goes to the owner, not to a subagent."""
+        report = {"stale": [], "edited": ["index"], "orphaned": [],
+                  "uncovered": [], "missing": [], "planned": []}
+        self.assertEqual(akashic_loop.classify(report),
+                         akashic_loop.REVIEW_ONLY)
+
+    def test_edited_alongside_real_work_still_updates(self):
+        report = {"stale": [{"id": "a", "changed": ["f.py"]}],
+                  "edited": ["index"], "orphaned": [], "uncovered": [],
+                  "missing": [], "planned": []}
+        self.assertEqual(akashic_loop.classify(report),
+                         akashic_loop.NEEDS_UPDATE,
+                         "the update flow skips edited pages itself; the "
+                         "other buckets still need doing")
+
+    def test_clean_repo_costs_nothing(self):
+        report = {"stale": [], "edited": [], "orphaned": [], "uncovered": [],
+                  "missing": [], "planned": []}
+        self.assertEqual(akashic_loop.classify(report), akashic_loop.CLEAN)
+
+    def test_planned_pages_count_as_work(self):
+        """A generate run that died leaves planned pages and nothing else;
+        the loop has to notice rather than call the repo clean."""
+        report = {"stale": [], "edited": [], "orphaned": [], "uncovered": [],
+                  "missing": [], "planned": ["ghost"]}
+        self.assertEqual(akashic_loop.classify(report),
+                         akashic_loop.NEEDS_UPDATE)
+
+    def test_gate_runs_against_a_real_repo_and_costs_no_tokens(self):
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        self.write(repo, ".akashic/wiki/a.md",
+                   "# A\n\nSources: [f1](../../f1.py)\n")
+        self.catalog(repo, [self.page("a", files=["f1.py"], scope=["f1.py"])],
+                     anchor=self.head(repo))
+        report, needs_work = akashic_loop.stale_report(str(repo))
+        self.assertFalse(needs_work)
+        self.assertEqual(akashic_loop.classify(report), akashic_loop.CLEAN)
+
+        self.write(repo, "f1.py", "changed\n")
+        self.commit(repo, "touch it")
+        report, needs_work = akashic_loop.stale_report(str(repo))
+        self.assertTrue(needs_work)
+        self.assertEqual(akashic_loop.classify(report),
+                         akashic_loop.NEEDS_UPDATE)
+
+    def test_a_broken_repo_raises_rather_than_reporting_clean(self):
+        """Failure visibility: a repo the gate cannot read must never look
+        like a repo with nothing to do."""
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)  # no .akashic at all -> akashic.py exits 2
+        with self.assertRaises(RuntimeError):
+            akashic_loop.stale_report(str(repo))
 
 
 if __name__ == "__main__":

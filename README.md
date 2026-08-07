@@ -26,6 +26,8 @@ straight into your repo alongside the code it describes.
 - **[akashic.py](akashic.py)** — the deterministic core (stdlib-only, Python
   3.9+): everything that must never be hallucinated — diffing, citation
   verification, hashing, anchoring.
+- **[bin/akashic_loop.py](bin/akashic_loop.py)** — the maintenance loop: poll a
+  fleet, refresh only what changed, open a PR.
 
 ## How it works
 
@@ -71,10 +73,12 @@ The helper also works standalone:
 
 ```sh
 python3 akashic.py -C <repo> scan          # filtered file tree (planner input)
-python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncovered pages
+python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncovered/missing/planned
+python3 akashic.py -C <repo> stale --check # same, exit 1 if any bucket is non-empty
 python3 akashic.py -C <repo> verify        # citation + catalog checks (exit 1 on failure)
-python3 akashic.py -C <repo> anchor        # record deps/hashes, stamp anchor, render TOC
+python3 akashic.py -C <repo> anchor        # record deps/hashes/blobs, stamp anchor, render TOC
 python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent prompt
+python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating a page
 ```
 
 ## Tests
@@ -82,6 +86,21 @@ python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent pr
 ```sh
 python3 test_akashic.py
 ```
+
+## Keeping it fresh
+
+`bin/akashic_loop.py` walks a list of repos, runs `stale --check` on each (no tokens),
+and only invokes Claude where something actually changed. It opens a PR rather than
+committing, leaves human-edited pages alone, and exits non-zero on any failure.
+
+```sh
+mkdir -p ~/.config/akashic-record && echo "$HOME/code/my-repo" >> ~/.config/akashic-record/repos
+python3 bin/akashic_loop.py --dry-run     # what each repo needs, spending nothing
+python3 bin/akashic_loop.py               # refresh what needs it, by PR
+```
+
+Schedule it however this machine prefers. Set `$AKASHIC_NOTIFY` to a command that should
+receive failures on stdin; without it they still reach stderr.
 
 ## Roadmap
 

@@ -20,11 +20,12 @@ akashic-record is a skill — not a CLI, service, or MCP server — made of thre
 
 - **`DESIGN.md`** — the **normative** design, on-disk format spec, and the research it was built against. Any behavior or format change must keep it in sync, and its §8 lists what is deliberately not built.
 - **`SKILL.md`** — the LLM side: plan/generate/update/status orchestration and the hard rules (script authority, edit protection, cite-or-omit). Covered in depth in [Skill Orchestration](./skill-orchestration.md).
+- **`bin/akashic_loop.py`** — the maintenance loop: poll a fleet of repos, refresh only what changed, open a PR, and never exit 0 on a failure. Covered in [Maintenance Loop](./maintenance-loop.md).
 - **`akashic.py`** — the deterministic core: one file, stdlib only, Python 3.9+, with subcommands `scan`, `stale`, `verify`, `anchor`, `prompt`, `bless` — everything that must never be hallucinated (diffing, citation verification, hashing, anchoring). Covered in depth in [Deterministic Core](./deterministic-core.md).
 
 Install is a symlink of this repo into `~/.claude/skills/akashic-record`; the repo *is* the skill, so don't assume the symlink already exists on the machine you're working on.
 
-Sources: [CLAUDE.md:8-16](../../CLAUDE.md#L8-L16), [README.md:22-28](../../README.md#L22-L28)
+Sources: [CLAUDE.md:8-16](../../CLAUDE.md#L8-L16), [README.md:22-30](../../README.md#L22-L30)
 
 ## Division of labor: LLM vs. script
 
@@ -95,7 +96,7 @@ Sources: [DESIGN.md:165-192](../../DESIGN.md#L165-L192), [DESIGN.md:193-206](../
 
 The update mechanism is the convergent one across every shipped system: a stored commit anchor plus a diff plus a per-page file-dependency map, triggered by polling or by hand — never per-push webhooks. `akashic.py stale` is read-only and prints JSON. It first checks that the anchor is reachable; if a force-push or shallow clone made it unreachable it says so and reports all pages stale rather than guessing, because wasting a regeneration is acceptable and marking stale content fresh is not. Then it diffs anchor to HEAD with rename detection, counting a rename as both old and new path, and intersects the changed paths against each page's recorded `files`, plus `scope` globs for added files. The result sorts into four buckets: `stale` pages get regenerated under the same Phase-2 contract; `edited` pages, where the current body hash differs from the recorded one, are never auto-overwritten; `orphaned` pages, whose documented files are all gone, are auto-deleted unless they are also edited, in which case they are only flagged; and `uncovered` added files may become proposed new catalog entries. The run ends by regenerating, verifying, anchoring, and printing a structured report that becomes the commit message. Pages carry no in-page changelog sections — pages are timeless, and temporal data belongs to git.
 
-Sources: [DESIGN.md:337-360](../../DESIGN.md#L337-L360), [DESIGN.md:380-385](../../DESIGN.md#L380-L385)
+Sources: [DESIGN.md:337-360](../../DESIGN.md#L337-L360), [DESIGN.md:392-397](../../DESIGN.md#L392-L397)
 
 ## Getting started
 
@@ -115,7 +116,7 @@ python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --
 
 Exit codes: 0 ok, 1 verification failure, 2 usage or precondition error. There is no build step, no dependencies, and no lint config; the suite runs with `python3 test_akashic.py`, and single classes or tests can be named directly. Fixtures are throwaway git repos built in `tempfile`, one smallest-possible check per deterministic component; the LLM phases have no unit tests, because the runtime `verify` gate is their coverage.
 
-Sources: [README.md:51-78](../../README.md#L51-L78), [CLAUDE.md:18-40](../../CLAUDE.md#L18-L40), [README.md:80-84](../../README.md#L80-L84), [CLAUDE.md:58-61](../../CLAUDE.md#L58-L61), [DESIGN.md:449-463](../../DESIGN.md#L449-L463)
+Sources: [README.md:53-82](../../README.md#L53-L82), [CLAUDE.md:18-40](../../CLAUDE.md#L18-L40), [README.md:84-88](../../README.md#L84-L88), [CLAUDE.md:58-61](../../CLAUDE.md#L58-L61), [DESIGN.md:461-475](../../DESIGN.md#L461-L475)
 
 ## Contributing and dogfooding
 
@@ -123,7 +124,7 @@ The default branch is `develop`; branch from it and target PRs at it, with commi
 
 This repo carries its own generated wiki in `.akashic/` and follows the skill's own rules: never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, or `generated` fields, running `bless <id>` after regenerating a page instead, never edit the derived `wiki/README.md`, and after source changes refresh through the update flow — `stale`, regenerate, `verify`, `anchor` — committed as `chore: refresh self-dogfooded wiki`.
 
-Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:427-447](../../DESIGN.md#L427-L447), [README.md:86-92](../../README.md#L86-L92), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:62-65](../../CLAUDE.md#L62-L65)
+Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:439-459](../../DESIGN.md#L439-L459), [README.md:105-111](../../README.md#L105-L111), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:62-65](../../CLAUDE.md#L62-L65)
 
 ## Security and license
 
@@ -141,6 +142,6 @@ A reading order for the first hour:
 4. `DESIGN.md` in the repo root, when you need the normative answer to a format or behavior question — especially §2 (division of labor), §3.3 (the citation grammar), and §8 (what is deliberately not built). Its build order also doubles as a dependency order for reading the source: `akashic.py`, then `test_akashic.py`, then `SKILL.md`, then `README.md`.
 5. `CONTRIBUTING.md` before your first PR, for the invariants and the branch and commit conventions.
 
-Sources: [README.md:22-28](../../README.md#L22-L28), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:465-474](../../DESIGN.md#L465-L474), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
+Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:477-486](../../DESIGN.md#L477-L486), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
 
-*Generated from commit `a518a56` on 2026-08-07.*
+*Generated from commit `700684c` on 2026-08-07.*

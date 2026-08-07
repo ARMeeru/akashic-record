@@ -340,6 +340,18 @@ The convergent mechanism across every shipped system — stored commit anchor + 
 per-page file-dependency map; polling or manual trigger, never per-push webhooks
 (OpenDeepWiki polls; Qoder anchors on `last_commit_id`; nobody watches pushes).
 
+**The maintenance loop.** `bin/akashic_loop.py` is that poll, made routine: it walks a
+repo list, runs `stale --check` per repo, and hands a repo to the LLM only when that
+check reports outstanding work. A quiet fleet therefore costs nothing to poll, which is
+what makes running it on a schedule reasonable rather than extravagant. Three properties
+are deliberate. It opens a **pull request** instead of committing, because unattended
+output should be read before it lands. It never regenerates a repo whose only finding is
+`edited` — a human wrote that page and hard rule 2 says leave it alone, so the loop
+reports it to the owner instead. And it **never exits 0 on failure**: an unverified
+wiki, a failed update flow, an unreadable repo and a missing repo list all exit non-zero
+and fire the notification hook, because a set-and-forget loop that fails silently
+fossilizes the wiki, which is worse than having no loop at all.
+
 `akashic.py stale` (read-only, prints JSON):
 
 1. `git cat-file -e <anchor>` — if the anchor is unreachable (force-push, shallow
@@ -431,7 +443,7 @@ cheapest possible mechanism:
 | Serialized knowledge graph (snippets, edge lists) | only 1 of Qoder's 5 edge types feeds its update loop — that one is the `files` array |
 | Own AST / static analysis | tokensave + graphify already exist as optional planner signal; generator agents have Read/Grep |
 | MCP server | adapter to ourselves (§6) |
-| Watchers, webhooks, daemons | no shipped system triggers per-push; anchor + manual trigger is the convergent answer |
+| Watchers, webhooks, daemons | no shipped system triggers per-push; anchor + polling is the convergent answer. A **scheduled poll** (`bin/akashic_loop.py`, §5) is not the excluded thing: no long-lived process, no subscription, no state of its own, and every cycle gated by a zero-token `stale --check` |
 | Web UI / hosted rendering | GitHub renders the markdown and the Mermaid |
 | Multi-language wikis | one `language` field reserved; parallel trees only when someone asks |
 | Knowledge cards / conversation memory | Qoder's other two pillars; CLAUDE.md and Claude Code memory already fill these roles |
