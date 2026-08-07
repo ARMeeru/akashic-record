@@ -520,7 +520,11 @@ Standing generation instructions that matter:
     because a wrong relocation would produce exactly the confidently-wrong numbers this
     check exists to catch. Reported once per file rather than per span: one edit moves
     every span in a file, and twenty near-identical warnings is how a class gets
-    filtered out unread. Silent when the anchor is unreachable, since every page is
+    filtered out unread. Every uncovered region is still named on that one line. Summarising
+    the tail as `(and 3 more)` gave a reader a number and withheld the only part they could
+    act on, and a field run had to reconstruct the hidden regions by hand from the catalog's
+    recorded `ranges`; the regions are a few characters each, so naming them costs nothing
+    that the summary was buying. Silent when the anchor is unreachable, since every page is
     reported stale in that state anyway.
     Also silent when the page's **goal** has been rewritten since the anchor
     (`goal_hash` recorded and no longer matching). "Did this page stop citing code it
@@ -753,6 +757,17 @@ The prompt instructs the judge to **default to refuting** and to separate **cont
 **overstated** (broader than what is shown). A section citing nothing is rendered with
 `EVIDENCE: none` rather than dropped, because prose resting on nothing at all is the
 strongest available finding.
+
+**The denominator comes from the extract, never from the judge.** The prompt closes by
+enumerating every section title and requiring one `sound`/`not sound` verdict each, in
+order, with the total written against a fixed count. Asking instead for "the count of
+sections you found sound" let the judge pick what it was counting: one field run reported
+`1 of 8` for a page `extract` says has nine sections, having folded one section's evidence
+into its neighbours' reasoning without saying so. Two passes over the same page were then
+not comparable, which is fatal for the single number this whole exercise tracks — and it
+had been that way for every score on record. Fixing it is pure templating, so it belongs on
+the deterministic side of §2. The sampling caveat stays and is now sharper: a fixed
+denominator makes two samples comparable, it does not promote either one to a measurement.
 
 **The blindness is a contract, not a sandbox — say so plainly.** The judge is a subagent
 with tools. Nothing prevents it opening the repository; it is *told* it has no access and

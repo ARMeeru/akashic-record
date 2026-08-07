@@ -94,7 +94,7 @@ Three things exist because of that gap, and `README.md` is explicit that none of
 
 Two caveats travel with these. A critic pass is one sample, not a measurement — rerunning on an unchanged catalog keeps finding things. And the one intervention `README.md` says reliably fixes a wrong page is correcting its `goal` and regenerating.
 
-Sources: [README.md:54-86](../../README.md#L54-L86), [DESIGN.md:728-732](../../DESIGN.md#L728-L732)
+Sources: [README.md:54-86](../../README.md#L54-L86), [DESIGN.md:732-736](../../DESIGN.md#L732-L736)
 
 ## Where to start reading
 
@@ -121,7 +121,7 @@ ln -s "$(pwd)" ~/.claude/skills/akashic-record
 
 The helper also runs standalone against any git repo with at least one commit — `python3 akashic.py -C <repo> scan | stale | verify | anchor | prompt <id> | remap | plan-check | plan-critic | audit prompt <id> | bless <id>`. Exit codes are 0 ok, 1 verification failure, 2 usage or precondition error. `CLAUDE.md` and `README.md` both carry the annotated list.
 
-Sources: [README.md:88-122](../../README.md#L88-L122), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [CLAUDE.md:52-70](../../CLAUDE.md#L52-L70), [DESIGN.md:868-877](../../DESIGN.md#L868-L877)
+Sources: [README.md:88-122](../../README.md#L88-L122), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [CLAUDE.md:52-70](../../CLAUDE.md#L52-L70), [DESIGN.md:883-892](../../DESIGN.md#L883-L892)
 
 ## Working in this repo
 
