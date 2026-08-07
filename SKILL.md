@@ -40,9 +40,10 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | `scan` | filtered file list with line counts (planner input) | a `# N files, M lines` header, then `lines<TAB>path` per file |
 | `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned/drifted/restated` |
 | `stale --check` | same report, plus exit 1 when any bucket is non-empty | zero-token gate for a scheduled runner |
+| `stale --ids <bucket>` | one page id per line for that bucket | plain text — loop over it directly, no JSON parsing |
 | `verify` | check pages, citations, catalog invariants; warn on invented identifiers and on anchored content no citation covers | errors, exit 1 if any |
 | `anchor` | record deps + hashes, stamp anchor commit, render TOC | summary |
-| `prompt <id> [--update]` | render the exact subagent prompt for one catalog page; `--update` adds what changed | text — dispatch it verbatim |
+| `prompt <id> [--update] [--out PATH]` | render the prompt for one catalog page; `--update` adds what changed, `--out` writes it to a file | text — dispatch it verbatim |
 | `remap` | shift citations whose lines moved without changing; no LLM | summary |
 | `plan-check` | shape checks on the catalog before a fan-out | JSON + warnings; always exit 0 |
 | `plan-critic [--out PATH]` | render the adversarial plan-review prompt for the whole catalog | text — dispatch it verbatim |
@@ -196,8 +197,10 @@ no commits, too many files — relay these to the user verbatim; they are action
    expanded set is more than you want to spend now, say so explicitly and list what you
    deferred; never silently drop a finding.
 4. Act per bucket:
-   - `stale` → regenerate each page with `prompt <id> --update`, which renders what
-     changed into the prompt for you. Never hand-append that context: `stale` knows the
+   - `stale` → regenerate each page with `prompt <id> --update --out <tmp>`, which
+     renders what changed into the prompt and keeps it out of your context; dispatch
+     "read that file in full and follow it". `stale --ids stale` gives you the ids to
+     loop over without parsing JSON. Never hand-append that context: `stale` knows the
      changed list and the script is what joins them. Run `bless <id>` on each page you
      regenerate (hard rule 1).
    - `drifted` → **run `remap`, do not regenerate.** The cited lines moved but their
@@ -206,7 +209,7 @@ no commits, too many files — relay these to the user verbatim; they are action
      spend a subagent to retype prose that was already correct.
    - `restated` → the page's *brief* changed, not its code: a goal was edited or a
      scope was widened onto a file that already existed. Regenerate with
-     `prompt <id> --update`, which names which of the two it was. This is where
+     `prompt <id> --update --out <tmp>`, which names which of the two it was. This is where
      `plan-critic`'s findings land — acting on them used to write into the catalog and
      never reach the page.
    - `missing` → regenerate from the catalog entry.

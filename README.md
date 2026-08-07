@@ -75,9 +75,10 @@ The helper also works standalone:
 python3 akashic.py -C <repo> scan          # filtered file tree (planner input)
 python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncovered/missing/planned
 python3 akashic.py -C <repo> stale --check # same, exit 1 if any bucket is non-empty
+python3 akashic.py -C <repo> stale --ids <bucket>  # one page id per line, for shell loops
 python3 akashic.py -C <repo> verify        # citation + catalog checks (exit 1 on failure)
 python3 akashic.py -C <repo> anchor        # record deps/hashes/blobs, stamp anchor, render TOC
-python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent prompt (--update adds what changed)
+python3 akashic.py -C <repo> prompt <id>   # render one page's prompt (--update adds what changed, --out to a file)
 python3 akashic.py -C <repo> remap         # shift drifted citations to new line numbers (no LLM)
 python3 akashic.py -C <repo> plan-check    # catalog shape checks before a fan-out
 python3 akashic.py -C <repo> plan-critic   # render the adversarial plan-review prompt (--out to a file)
