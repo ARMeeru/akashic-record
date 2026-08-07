@@ -1,6 +1,6 @@
 # Project Overview
 
-akashic-record is a repo wiki generator for Claude Code: it plans a page catalog, generates repo-committed markdown with line-range citations into source, and incrementally updates only the pages whose underlying files changed — while never overwriting human edits. It ships as a Claude Code skill plus one stdlib-only Python helper, is MIT licensed, and dogfoods itself: the page you are reading lives in this repo's own `.akashic/wiki/`. This page is the first-hour orientation — what the project is, the three artifacts, the division of labor between the LLM and the deterministic script, the citation contract that holds it together, and where to read next.
+akashic-record is a repo wiki generator for Claude Code: it plans a page catalog, generates repo-committed markdown with line-range citations into source, and incrementally updates only the pages whose underlying files changed — while never overwriting human edits. It ships as a Claude Code skill plus one stdlib-only Python helper, is MIT licensed, and dogfoods itself: the page you are reading lives in this repo's own `.akashic/wiki/`. This page is the first-hour orientation — what the project is, the four artifacts, the division of labor between the LLM and the deterministic script, the citation contract that holds it together, and where to read next.
 
 ## What it is and why it exists
 
@@ -16,7 +16,7 @@ Sources: [DESIGN.md:19-39](../../DESIGN.md#L19-L39), [DESIGN.md:41-45](../../DES
 
 ## The three artifacts
 
-akashic-record is a skill — not a CLI, service, or MCP server — made of three files:
+akashic-record is a skill — not a CLI, service, or MCP server — made of four files:
 
 - **`DESIGN.md`** — the **normative** design, on-disk format spec, and the research it was built against. Any behavior or format change must keep it in sync, and its §8 lists what is deliberately not built.
 - **`SKILL.md`** — the LLM side: plan/generate/update/status orchestration and the hard rules (script authority, edit protection, cite-or-omit). Covered in depth in [Skill Orchestration](./skill-orchestration.md).
@@ -34,7 +34,7 @@ The design's one non-negotiable: **the LLM never computes a hash, diff, or line 
 | Who | Does | Never does |
 |---|---|---|
 | LLM (skill-orchestrated) | overview, catalog planning, page prose, update triage | compute a hash, diff, or line range |
-| `akashic.py` (stdlib only: `json subprocess hashlib pathlib re fnmatch`) | `scan`, `stale`, `verify`, `anchor`, `prompt`, `remap`, `plan-check`, `plan-critic`, `audit` | call an LLM |
+| `akashic.py` (stdlib only: `json subprocess hashlib pathlib re fnmatch`) | `scan`, `stale`, `verify`, `anchor`, `prompt`, `remap`, `plan-check`, `plan-critic`, `audit`, `bless` | call an LLM |
 
 Anything that could lose human work or mark stale content as fresh is deterministic code; everything stochastic passes through the deterministic `verify` gate before it can be anchored. Read that as the boundary between the two sibling pages: [Deterministic Core](./deterministic-core.md) is the left column, [Skill Orchestration](./skill-orchestration.md) is the right.
 
@@ -42,7 +42,7 @@ Sources: [DESIGN.md:47-56](../../DESIGN.md#L47-L56), [CLAUDE.md:45-48](../../CLA
 
 ## How the pipeline runs
 
-Catalog-first, the one pattern every surveyed system converged on. Phase 0 is `scan`: a filtered file tree with per-file line counts, sourced from `git ls-files` (so gitignore is respected for free) minus binaries, lockfiles and vendored directories, and `exclude` globs, capped at `max_files`. Phase 1 is planning in the main session — Claude reads scan output, the README, and `notes.md` if present, and writes the `pages` array of the catalog. Phase 1b is `plan-check`, a free, LLM-free look at the shape of that plan before any tokens are spent: scopes matching nothing, a scope entirely inside a sibling's, heavy pairwise overlap, the ~200-file split rule, empty goals, duplicate titles, and expanded line totals per page. It always exits 0, because several findings are legitimate and a pre-flight check that blocked would be routed around. Phase 1c is `plan-critic`: the script renders one adversarial review prompt for the whole catalog and an LLM judges it, asking whether each goal is substantiated by files the page may actually cite, whether it asserts anything the code contradicts, and whether two goals claim the same subject. It exists because `verify` proves a citation resolves and never that a page wrote what it was asked to — under cite-or-omit an under-scoped page does not fail, it quietly says less. Phase 2 dispatches one subagent per page in parallel, each reading only its assigned files. Phase 3 is the script again: `verify` checks that every citation resolves to a git-tracked path inside the repo with an in-bounds line range, that every page has an H1, and that every internal cross-link points at an id the catalog actually contains, and warns when a backticked identifier in a section appears in none of the files that section cites or when code the page was anchored to is covered by no citation; then `anchor` records each page's dependencies and body hash, stamps the anchor commit, and re-renders the derived TOC.
+Catalog-first, the one pattern every surveyed system converged on. Phase 0 is `scan`: a filtered file tree with per-file line counts, sourced from `git ls-files` (so gitignore is respected for free) minus binaries, lockfiles and vendored directories, and `exclude` globs, capped at `max_files`. Phase 1 is planning in the main session — Claude reads scan output, the README, and `notes.md` if present, and writes the `pages` array of the catalog. Phase 1b is `plan-check`, a free, LLM-free look at the shape of that plan before any tokens are spent: scopes matching nothing, a scope entirely inside a sibling's, every overlapping pair ranked by duplicated lines, the ~200-file split rule, empty goals, duplicate titles, and expanded line totals per page. It applies no threshold to overlap: a ratio against page size is blind to one enormous shared file and drops findings when an unrelated page grows, so which overlaps matter is left to the critic that follows. It always exits 0, because several findings are legitimate and a pre-flight check that blocked would be routed around. Phase 1c is `plan-critic`: the script renders one adversarial review prompt for the whole catalog and an LLM judges it, asking whether each goal is substantiated by files the page may actually cite, whether it asserts anything the code contradicts, and whether two goals claim the same subject. It exists because `verify` proves a citation resolves and never that a page wrote what it was asked to — under cite-or-omit an under-scoped page does not fail, it quietly says less. Phase 2 dispatches one subagent per page in parallel, each reading only its assigned files. Phase 3 is the script again: `verify` checks that every citation resolves to a git-tracked path inside the repo with an in-bounds line range, that every page has an H1, and that every internal cross-link points at an id the catalog actually contains, and warns when a backticked identifier in a section appears in none of the files that section cites or when code the page was anchored to is covered by no citation; then `anchor` records each page's dependencies and body hash, stamps the anchor commit, and re-renders the derived TOC.
 
 ```mermaid
 flowchart LR
@@ -52,11 +52,11 @@ flowchart LR
     Verify --> Anchor["3b. Anchor (script): record deps/hashes, stamp commit, render TOC"]
 ```
 
-Sources: [DESIGN.md:231-236](../../DESIGN.md#L231-L236), [DESIGN.md:238-244](../../DESIGN.md#L238-L244), [DESIGN.md:251-266](../../DESIGN.md#L251-L266), [DESIGN.md:397-459](../../DESIGN.md#L397-L459)
+Sources: [DESIGN.md:231-236](../../DESIGN.md#L231-L236), [DESIGN.md:238-244](../../DESIGN.md#L238-L244), [DESIGN.md:251-266](../../DESIGN.md#L251-L266), [DESIGN.md:407-469](../../DESIGN.md#L407-L469)
 
 Two things about Phase 2 are worth knowing before you touch it. Each subagent's prompt is rendered by `akashic.py prompt <id>`, never hand-written — the mechanical template carries the goal, the scope-expanded file allowlist, the sibling id-to-title list, and the citation contract, because an agent hand-constructing that prompt from memory is how the untracked-citation bug first shipped. And the standing generation rule is cite-or-omit: prefer "not documented here" over invention, with a `Sources:` entry behind every non-obvious claim. Scope is the citable boundary, but nothing enforces it at generation time; `verify` warns rather than errors when a page cites a real file outside its scope, which is a planning signal — scope too wide duplicates content, scope too narrow forces the subagent outside it. There is a hard precondition on the whole pipeline: a git repo with at least one commit, failing loudly rather than degrading, because the anchor model depends on it.
 
-Sources: [DESIGN.md:350-364](../../DESIGN.md#L350-L364), [DESIGN.md:378-395](../../DESIGN.md#L378-L395), [DESIGN.md:246-249](../../DESIGN.md#L246-L249)
+Sources: [DESIGN.md:360-374](../../DESIGN.md#L360-L374), [DESIGN.md:388-405](../../DESIGN.md#L388-L405), [DESIGN.md:246-249](../../DESIGN.md#L246-L249)
 
 ## On-disk format and invariants
 
@@ -102,7 +102,7 @@ Sources: [DESIGN.md:171-198](../../DESIGN.md#L171-L198), [DESIGN.md:199-212](../
 
 The update mechanism is the convergent one across every shipped system: a stored commit anchor plus a diff plus a per-page file-dependency map, triggered by polling or by hand — never per-push webhooks. `akashic.py stale` is read-only and prints JSON. It first checks that the anchor is reachable; if a force-push or shallow clone made it unreachable it says so and reports all pages stale rather than guessing, because wasting a regeneration is acceptable and marking stale content fresh is not. Then it diffs anchor to HEAD with rename detection, counting a rename as both old and new path, and intersects the changed paths against each page's recorded `files`, plus `scope` globs for added files. The result sorts into four buckets: `stale` pages get regenerated under the same Phase-2 contract; `edited` pages, where the current body hash differs from the recorded one, are never auto-overwritten; `orphaned` pages, whose documented files are all gone, are auto-deleted unless they are also edited, in which case they are only flagged; and `uncovered` added files may become proposed new catalog entries. The run ends by regenerating, verifying, anchoring, and printing a structured report that becomes the commit message. Pages carry no in-page changelog sections — pages are timeless, and temporal data belongs to git.
 
-Sources: [DESIGN.md:465-488](../../DESIGN.md#L465-L488), [DESIGN.md:561-566](../../DESIGN.md#L561-L566)
+Sources: [DESIGN.md:475-498](../../DESIGN.md#L475-L498), [DESIGN.md:571-576](../../DESIGN.md#L571-L576)
 
 ## Getting started
 
@@ -126,7 +126,7 @@ python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --
 
 Exit codes: 0 ok, 1 verification failure, 2 usage or precondition error. There is no build step, no dependencies, and no lint config; the suite runs with `python3 test_akashic.py`, and single classes or tests can be named directly. Fixtures are throwaway git repos built in `tempfile`, one smallest-possible check per deterministic component; the LLM phases have no unit tests, because the runtime `verify` gate is their coverage.
 
-Sources: [README.md:53-86](../../README.md#L53-L86), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [README.md:87-92](../../README.md#L87-L92), [CLAUDE.md:69-71](../../CLAUDE.md#L69-L71), [DESIGN.md:671-683](../../DESIGN.md#L671-L683)
+Sources: [README.md:53-86](../../README.md#L53-L86), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [README.md:87-92](../../README.md#L87-L92), [CLAUDE.md:69-71](../../CLAUDE.md#L69-L71), [DESIGN.md:681-693](../../DESIGN.md#L681-L693)
 
 ## Contributing and dogfooding
 
@@ -134,7 +134,7 @@ The default branch is `develop`; branch from it and target PRs at it, with commi
 
 This repo carries its own generated wiki in `.akashic/` and follows the skill's own rules: never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, or `generated` fields, running `bless <id>` after regenerating a page instead, never edit the derived `wiki/README.md`, and after source changes refresh through the update flow — `stale`, regenerate, `verify`, `anchor` — committed as `chore: refresh self-dogfooded wiki`.
 
-Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:638-658](../../DESIGN.md#L638-L658), [README.md:109-125](../../README.md#L109-L125), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:73-75](../../CLAUDE.md#L73-L75)
+Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:648-668](../../DESIGN.md#L648-L668), [README.md:109-125](../../README.md#L109-L125), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:73-75](../../CLAUDE.md#L73-L75)
 
 ## Security and license
 
@@ -152,6 +152,6 @@ A reading order for the first hour:
 4. `DESIGN.md` in the repo root, when you need the normative answer to a format or behavior question — especially §2 (division of labor), §3.3 (the citation grammar), and §8 (what is deliberately not built). Its build order also doubles as a dependency order for reading the source: `akashic.py`, then `test_akashic.py`, then `SKILL.md`, then `README.md`.
 5. `CONTRIBUTING.md` before your first PR, for the invariants and the branch and commit conventions.
 
-Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:687-694](../../DESIGN.md#L687-L694), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
+Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:697-704](../../DESIGN.md#L697-L704), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
 
-*Generated from commit `93512406` on 2026-08-07.*
+*Generated from commit `19ef900e` on 2026-08-07.*
