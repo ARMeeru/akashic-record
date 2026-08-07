@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "5ea2da6e88d9031c822ecc06a6387c6124d0c0a1",
-  "generated": "2026-08-07T12:37:15Z",
+  "anchor": "22e712eb39fe496627751d7cbb0a13ddd48b578f",
+  "generated": "2026-08-07T12:41:21Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,12 +30,12 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:45b6ab51196039bcea17a5f8229cd449707cad2932bcae51fecf5755b2e12d3f",
+      "hash": "sha256:c22a1a14a9b84a5d5ec6afa872aca7c018f9db8e964dadc7b5600c6a83a1c3f0",
       "frozen": false,
       "blobs": {
-        "CLAUDE.md": "0d95ac457b8e81a136602b87ad3d7156fbdd5791",
+        "CLAUDE.md": "ea9fc633a0a99a58060b5b9af6c54ac990d87c1d",
         "CONTRIBUTING.md": "85e0da41202b7d09f049ef65cad8f729c2eaac36",
-        "DESIGN.md": "196fe47a8f853cdfe807a3b473cdac8745c22c87",
+        "DESIGN.md": "2a286287a86eb808e6acae580baec6446cc212d5",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
         "README.md": "0057d7cddcefd5143fff5e6e793ebda903f4f1eb",
         "SECURITY.md": "bfc548840a65633e8f1db49bb576b069bcf0d52f"
@@ -183,16 +183,16 @@
             682
           ],
           [
-            777,
-            797
+            790,
+            810
           ],
           [
-            810,
-            822
+            823,
+            835
           ],
           [
-            826,
-            833
+            839,
+            846
           ]
         ],
         "LICENSE": [
@@ -262,11 +262,11 @@
         "test_akashic.py"
       ],
       "status": "done",
-      "hash": "sha256:89b31d21201aef8ef8a2fbe067b8a3be3915edc26e67d53136027ca097396aff",
+      "hash": "sha256:9cd66a5b0727e070d8d2a8fd4d72e2a30afb0ea35007c15abb2ca61be1011f10",
       "frozen": false,
       "blobs": {
-        "akashic.py": "e0bdf1610482da59a2aee49852f34ebb023b5c9b",
-        "test_akashic.py": "68e84d4c39063ae525c26cc6bf02bcafcdd65f52"
+        "akashic.py": "c13eff187b91da4111996bbe71337ea3a986891e",
+        "test_akashic.py": "9e8e52d0279dedbe783e2ce00d23afee1b06fed2"
       },
       "ranges": {
         "akashic.py": [
@@ -532,27 +532,27 @@
           ],
           [
             2136,
-            2179
+            2188
           ],
           [
-            2186,
-            2202
+            2195,
+            2211
           ],
           [
-            2205,
-            2285
+            2214,
+            2314
           ],
           [
-            2288,
-            2331
+            2317,
+            2360
           ],
           [
-            2313,
-            2402
+            2342,
+            2431
           ],
           [
-            2372,
-            2391
+            2401,
+            2420
           ]
         ],
         "test_akashic.py": [
@@ -622,11 +622,11 @@
           ],
           [
             1735,
-            1875
+            1906
           ],
           [
-            1878,
-            2024
+            1909,
+            2055
           ]
         ]
       },
