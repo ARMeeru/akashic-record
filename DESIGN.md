@@ -463,7 +463,15 @@ Standing generation instructions that matter:
     to close it: `ranges` are already in anchor coordinates and the anchor commit is
     already stored, so the tool reads what a span actually held (`git show
     <anchor>:<path>`), locates that content in the working tree, and warns when no
-    citation on the page covers where it landed. Relocation matches the **pair** of
+    citation on the page *touches* where it landed. Touching, not covering: requiring the
+    whole anchored span to sit inside the page's merged citations assumed a correct
+    rewrite still cites at least as much as the previous one did, and a good rewrite
+    routinely cites **less** — tighter ranges are the improvement. That made the check
+    noisiest exactly when it is least useful, immediately after a regeneration, which is
+    the only time it runs in the normal flow. Its first live outing on a real repo
+    produced 13 warnings, every one a narrowed or split citation and none a dropped
+    claim. "Cited nowhere" is the honest question and the one the warning text already
+    claims to ask. Relocation matches the **pair** of
     first and last non-blank lines, preferring the recorded span's length; single-line
     matching left a fifth of this repo's spans unresolvable, since boundary lines repeat
     (`}`, `)`, a bare `return`). Uniqueness is required — ambiguity yields no answer,
