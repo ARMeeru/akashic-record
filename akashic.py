@@ -614,15 +614,21 @@ def check_anchored_content(root, anchor, page, rel, current, cache):
             continue
         # One line per file, not per span. A file that moved moves every span
         # in it, and twenty near-identical warnings for one edit is how a
-        # warning class gets filtered out unread.
-        start, end, lo, hi = uncovered[0]
-        moved = "" if (lo, hi) == (start, end) else f", anchored at {start}-{end}"
-        more = "" if len(uncovered) == 1 else f" (and {len(uncovered) - 1} more)"
+        # warning class gets filtered out unread. Every region still gets
+        # named on that line: summarising them as "(and 3 more)" made the
+        # warning unactionable, and a field run had to reconstruct the hidden
+        # ones by hand from the catalog's recorded ranges. The regions are a
+        # few characters each, so naming them costs nothing the summary was
+        # buying.
+        regions = ", ".join(
+            f"{lo}-{hi}" if (lo, hi) == (start, end)
+            else f"{lo}-{hi} (anchored at {start}-{end})"
+            for start, end, lo, hi in uncovered)
         warnings.append(
             f"{page['id']}: {rel}: code this page anchored to in {path} is "
-            f"now at lines {lo}-{hi}{moved}{more}, covered by no citation on "
-            "this page -- check the line numbers, or drop the claim if the "
-            "page no longer documents it")
+            f"now at lines {regions}, covered by no citation on this page -- "
+            "check the line numbers, or drop the claim if the page no longer "
+            "documents it")
     return warnings
 
 
@@ -2338,6 +2344,7 @@ def render_audit_prompt(root, page_id):
         else:
             lines.append("EVIDENCE: none -- this section cites nothing.")
         lines.append("")
+    titles = [s["title"] for s in page["sections"]]
     lines += [
         "## Report",
         "",
@@ -2347,10 +2354,28 @@ def render_audit_prompt(root, page_id):
         "and use the words: **contradicted** (the evidence shows otherwise), "
         "**unsupported** (the evidence is silent), **overstated** (broader "
         "than what is shown, e.g. \"always\" against a conditional). Ignore "
-        "matters of style. End with the count of sections you found sound, "
-        "stated as one sample rather than a score -- another pass over the "
-        "same page will not return the same number, and a reader treating it "
-        "as a measurement will draw the wrong conclusion.",
+        "matters of style.",
+        "",
+        f"Then close with a verdict line for every one of the {len(titles)} "
+        "sections below, in this order, each marked `sound` or `not sound`, "
+        "using the title exactly as written:",
+        "",
+    ]
+    lines += [f"{n}. {title}" for n, title in enumerate(titles, 1)]
+    lines += [
+        "",
+        f"The list is fixed and the denominator is {len(titles)}. Do not "
+        "merge two sections into one verdict, do not split one into two, and "
+        "do not omit a section because its evidence was covered while "
+        "discussing another -- report it under its own title as well. Every "
+        "section gets a line even where you found nothing wrong with it. "
+        f"End with the total, written as \"sound: N of {len(titles)}\".",
+        "",
+        "That total is one sample and not a score. Another pass over the same "
+        "page will not return the same number, and a reader treating it as a "
+        "measurement will draw the wrong conclusion. A fixed denominator "
+        "makes two samples comparable; it does not make either one a "
+        "measurement.",
         "",
         "Do not rewrite the documentation, and do not ask for more evidence "
         "-- the limited view is the method, not an oversight.",

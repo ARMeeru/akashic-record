@@ -923,6 +923,42 @@ class TestReviewRegressions(RepoCase):
         self.assertEqual(errors, [])
         self.assertNotIn("anchored to", stderr)
 
+    def test_every_uncovered_region_is_named_on_the_line(self):
+        """"(and 3 more)" told a reader a number and withheld the only thing
+        they could act on. A field run had to reconstruct the hidden regions
+        by hand from the catalog's recorded ranges. One line per file is
+        still right -- naming the regions on it costs a few characters."""
+        repo = self.make_repo()
+        body = "def one():\n    return 1\n\n\ndef two():\n    return 2\n"
+        self.write(repo, "src/app.py", body)
+        self.commit(repo)
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\n## A\n\nFirst.\n\n"
+                   "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n\n"
+                   "## B\n\nSecond.\n\n"
+                   "Sources: [src/app.py:5-6](../../src/app.py#L5-L6)\n")
+        self.catalog(repo, [self.page("index", files=["src/app.py"],
+                                      scope=["src/*"])])
+        root = akashic.repo_root(repo)
+        akashic.anchor_repo(root)
+        self.commit(repo, "wiki")
+
+        # Both anchored regions survive in the file but the page now cites
+        # neither of them.
+        self.write(repo, "src/app.py", "# pad\n" + body + "\ndef three():\n"
+                   "    return 3\n")
+        self.commit(repo, "shift")
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\n## A\n\nThird.\n\n"
+                   "Sources: [src/app.py:8-9](../../src/app.py#L8-L9)\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("more)", stderr, "no region may be summarised away")
+        self.assertIn("2-3", stderr)
+        self.assertIn("6-7", stderr)
+        self.assertEqual(stderr.count("anchored to in src/app.py"), 1,
+                         "still one line per file")
+
     def edit_goal(self, root, pid, goal):
         catalog = akashic.load_catalog(root)
         for page in catalog["pages"]:
@@ -1985,7 +2021,37 @@ class TestAudit(RepoCase):
             "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
         text = akashic.render_audit_prompt(root, "index")
         self.assertIn("Do not judge attribution", text)
-        self.assertIn("one sample rather than a score", text)
+        self.assertIn("one sample and not a score", text)
+
+    def test_the_denominator_is_fixed_by_the_extract(self):
+        """The judge used to choose it. Asked for "the count of sections you
+        found sound", one run reported 1 of 8 for a page `extract` says has
+        9, having folded a section's evidence into its neighbours' reasoning.
+        Two runs of the same page were then not comparable, which is fatal
+        for the one number this whole exercise tracks."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n\n"
+            "## Beta\n\nIt returns two.\n\n"
+            "Sources: [src/app.py:4-5](../../src/app.py#L4-L5)\n")
+        text = akashic.render_audit_prompt(root, "index")
+        self.assertIn("every one of the 2 sections", text)
+        self.assertIn("the denominator is 2", text)
+        self.assertIn('"sound: N of 2"', text)
+        self.assertIn("1. Alpha", text)
+        self.assertIn("2. Beta", text)
+        self.assertIn("do not omit a section", text,
+                      "silent merging is the failure being closed")
+
+    def test_a_fixed_denominator_does_not_promote_the_count_to_a_measurement(self):
+        """Two samples become comparable; neither becomes a measurement.
+        `plan-critic` disagreed with itself twice over an unchanged catalog,
+        and a stable denominator does nothing about that."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        text = akashic.render_audit_prompt(root, "index")
+        self.assertIn("does not make either one a measurement", text)
 
     def test_unknown_page_ids_fail_rather_than_auditing_nothing(self):
         root = self.audit_repo(
