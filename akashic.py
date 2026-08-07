@@ -550,7 +550,29 @@ def check_anchored_content(root, anchor, page, rel, current, cache):
 
     Warning-level, like check_identifiers. Re-scoping a page drops citations on
     purpose, and a check that blocked `anchor` for that would be wrong more
-    often than right."""
+    often than right.
+
+    Silent when the page's *goal* has been rewritten since the anchor. "Did
+    this page stop citing code it was anchored to?" is a question with a known
+    answer once the brief changed: yes, deliberately, wherever the new goal
+    asks for something the old one didn't. Three consecutive field runs
+    reported this class as pure noise on regenerated pages, and the fix that
+    suggests itself -- skip pages blessed this run -- would delete the check
+    outright, since a regeneration is the only time it ever runs. A goal
+    rewrite is the narrower and the honest condition.
+
+    Deliberately not extended to the rest of `restated`. Widening a scope adds
+    a file; it does not authorise dropping the citations the page already had,
+    so the check keeps its teeth there and for every ordinary `stale` regen
+    under an unchanged goal.
+
+    The window is exactly one verify cycle: `anchor` stamps the new goal_hash
+    for pages it wrote, so the very next run re-arms. A goal edited but never
+    regenerated is skipped too, which costs nothing -- `restated` is already
+    shouting about that page, and louder."""
+    recorded_goal = page.get("goal_hash")
+    if recorded_goal and recorded_goal != goal_hash(page.get("goal")):
+        return []
     warnings = []
     for path, spans in sorted((page.get("ranges") or {}).items()):
         old = file_at_rev(root, anchor, path, cache)

@@ -522,6 +522,23 @@ Standing generation instructions that matter:
     every span in a file, and twenty near-identical warnings is how a class gets
     filtered out unread. Silent when the anchor is unreachable, since every page is
     reported stale in that state anyway.
+    Also silent when the page's **goal** has been rewritten since the anchor
+    (`goal_hash` recorded and no longer matching). "Did this page stop citing code it
+    was anchored to?" has a known answer once the brief changed: yes, deliberately,
+    wherever the new goal asks for something the old one did not. Three consecutive
+    field reports called the class pure noise on regenerated pages, and the fix that
+    suggests itself — skip pages blessed in the current run — would delete the check
+    outright, since a regeneration is the only time it runs. Note also that those
+    reports diagnosed the noise as narrowing artifacts, which it cannot be: the overlap
+    rule above already silences a narrowing, and on the run measured the repo's HEAD
+    equalled its anchor, so relocation was exact and the flagged spans were ones the
+    page had genuinely stopped citing. Deliberately **not** extended to the rest of
+    `restated`: widening a scope adds a file, it does not authorise dropping the
+    citations a page already had, so the check keeps its teeth there and for every
+    ordinary `stale` regeneration under an unchanged goal. The window is one verify
+    cycle — `anchor` stamps the new `goal_hash` for pages it wrote, so the next run
+    re-arms. A goal edited but never regenerated is skipped too, which costs nothing:
+    `restated` is already reporting that page, and louder.
     Rejected on measurement, recorded so they are not re-proposed: warning when a range
     starts or ends on a **bare closing bracket** fires on 65% of citations in a
     TypeScript repo, `}` being the normal end of a function; checking a section's

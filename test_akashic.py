@@ -923,6 +923,81 @@ class TestReviewRegressions(RepoCase):
         self.assertEqual(errors, [])
         self.assertNotIn("anchored to", stderr)
 
+    def edit_goal(self, root, pid, goal):
+        catalog = akashic.load_catalog(root)
+        for page in catalog["pages"]:
+            if page["id"] == pid:
+                page["goal"] = goal
+        akashic.save_catalog(root, catalog)
+
+    def test_a_rewritten_goal_silences_the_anchored_content_class(self):
+        """Same fixture as the warning case above, with one field changed.
+        "Did this page stop citing code it was anchored to?" has a known answer
+        once the brief changed -- yes, wherever the new goal asks for something
+        the old one didn't -- and three field runs reported the class as pure
+        noise on regenerated pages."""
+        root = self.anchored_range_repo(
+            "[src/app.py:1-3](../../src/app.py#L1-L3)",  # stale numbers
+            prelude="# a\n# b\n# c\n# d\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertIn("anchored to", stderr, "fixture must warn before the edit")
+
+        self.edit_goal(root, "index", "document index, but only the entry point")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("anchored to", stderr)
+
+    def test_a_widened_scope_alone_does_not_silence_it(self):
+        """The other half of `restated`, deliberately excluded. Widening a
+        scope adds a file; it does not authorise dropping the citations the
+        page already had."""
+        root = self.anchored_range_repo(
+            "[src/app.py:1-3](../../src/app.py#L1-L3)",  # stale numbers
+            prelude="# a\n# b\n# c\n# d\n")
+        catalog = akashic.load_catalog(root)
+        catalog["pages"][0]["scope"] = ["src/*", "docs/*"]
+        akashic.save_catalog(root, catalog)
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertIn("anchored to", stderr)
+
+    def test_the_goal_rewrite_window_is_one_verify_cycle(self):
+        """The suppression must not be permanent. `anchor` stamps the new
+        goal_hash for pages it wrote, so the run after the regeneration has a
+        matching hash again and the check re-arms on its own."""
+        root = self.anchored_range_repo(
+            "[src/app.py:1-3](../../src/app.py#L1-L3)",  # stale numbers
+            prelude="# a\n# b\n# c\n# d\n")
+        self.edit_goal(root, "index", "document index, but only the entry point")
+        akashic.bless_pages(root, ["index"])  # what a regeneration does
+        self.assertNotIn("anchored to", self.warnings_from_verify(root)[1])
+        akashic.anchor_repo(root)
+        self.commit(root, "wiki")
+
+        # One cycle on: the goal now matches what anchor recorded, so a fresh
+        # drift has to be visible again.
+        self.write(root, "src/app.py",
+                   "# e\n# f\n# g\n# h\n# i\n# j\n"
+                   + (root / "src/app.py").read_text())
+        self.commit(root, "shift it again")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertIn("anchored to", stderr,
+                      "a goal matching its recorded hash must warn again")
+
+    def test_an_absent_goal_hash_leaves_the_check_armed(self):
+        """Catalogs predating goal_hash must not silently lose a warning
+        class. Absent means say nothing about the goal, not skip the page."""
+        root = self.anchored_range_repo(
+            "[src/app.py:1-3](../../src/app.py#L1-L3)",  # stale numbers
+            prelude="# a\n# b\n# c\n# d\n")
+        catalog = akashic.load_catalog(root)
+        catalog["pages"][0].pop("goal_hash", None)
+        akashic.save_catalog(root, catalog)
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertIn("anchored to", stderr)
+
     def test_merge_spans_bridges_whitespace_only_gaps(self):
         lines = ["a", "", "b", "   ", "c", "x", "d"]
         self.assertEqual(akashic.merge_spans([(1, 1), (3, 3)], lines),
