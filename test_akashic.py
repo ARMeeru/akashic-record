@@ -6,6 +6,8 @@ mapping (the test that proves the incremental mechanism), citation verification,
 and the anchor invariant. Fixtures are throwaway git repos; stdlib unittest only.
 """
 
+import contextlib
+import io
 import json
 import shutil
 import subprocess
@@ -139,8 +141,66 @@ class TestStale(RepoCase):
 
         report = akashic.compute_stale(akashic.repo_root(repo))
         self.assertFalse(report["anchor_reachable"])
+        self.assertEqual(report["anchor_state"], "anchor_unreachable")
         self.assertEqual([s["id"] for s in report["stale"]], ["a"],
                          "never guess: unreachable anchor means regenerate all")
+
+    def test_never_anchored_is_distinguished_from_unreachable(self):
+        """The two need different fixes: a first run just needs `anchor`, a
+        vanished commit means a shallow clone or a squashed-away branch."""
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("a", files=["f1.py"])], anchor=None)
+        self.write(repo, ".akashic/wiki/a.md", "# A\n\nSources: [f1](../../f1.py)\n")
+
+        report = akashic.compute_stale(akashic.repo_root(repo))
+        self.assertFalse(report["anchor_reachable"])
+        self.assertEqual(report["anchor_state"], "never_anchored")
+
+    def test_planned_page_never_written_is_reported(self):
+        """`missing` only inspects done pages, so a page a dead subagent never
+        wrote is invisible to it -- and verify/anchor skip non-done pages too.
+        Without this bucket, a generate run that mostly failed still reports
+        verify ok, a stamped anchor and a clean stale."""
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        anchor = self.head(repo)
+        self.write(repo, ".akashic/wiki/done.md",
+                   "# Done\n\nSources: [f1](../../f1.py)\n")
+        self.catalog(repo, [self.page("done", files=["f1.py"], scope=["f1.py"]),
+                            self.page("ghost", scope=["f1.py"],
+                                      status="planned")],
+                     anchor=anchor)
+
+        report = akashic.compute_stale(akashic.repo_root(repo))
+        self.assertEqual(report["planned"], ["ghost"])
+        self.assertEqual(report["missing"], [],
+                         "missing is about done pages; planned is its own state")
+
+    def test_check_exit_code_is_the_runners_zero_token_gate(self):
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        anchor = self.head(repo)
+        self.write(repo, ".akashic/wiki/a.md", "# A\n\nSources: [f1](../../f1.py)\n")
+        self.catalog(repo, [self.page("a", files=["f1.py"], scope=["f1.py"])],
+                     anchor=anchor)
+        root = akashic.repo_root(repo)
+
+        self.assertEqual(self.run_stale_check(root), 0,
+                         "nothing outstanding must cost the runner nothing")
+
+        self.write(repo, "f1.py", "one changed\n")
+        self.commit(repo, "touch a dependency")
+        self.assertEqual(self.run_stale_check(root), 1,
+                         "a stale page must wake the runner")
+
+    def run_stale_check(self, root):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+            return akashic.cmd_stale(root, check=True)
 
 
 class TestVerify(RepoCase):
