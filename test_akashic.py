@@ -270,6 +270,80 @@ class TestStale(RepoCase):
         self.assertEqual([s["id"] for s in akashic.compute_stale(root)["stale"]],
                          ["a"], "no recorded range means file-level staleness")
 
+    def test_content_shifted_above_a_citation_is_reported_as_drift(self):
+        """The hole range-level staleness opens: a change above the cited lines
+        touches no cited span, so the page is not stale -- but its line numbers
+        now point at different code, in bounds, so verify cannot see it."""
+        repo, root = self.ranged_repo()
+        original = (repo / "src/app.py").read_text(encoding="utf-8")
+        (repo / "src/app.py").write_text("import new\n" * 5 + original,
+                                         encoding="utf-8")
+        self.commit(repo, "insert five lines above the cited block")
+
+        report = akashic.compute_stale(root)
+        self.assertEqual(report["stale"], [], "cited lines were not touched")
+        self.assertEqual([d["id"] for d in report["drifted"]], ["a"],
+                         "but they moved, and that has to be visible")
+
+    def test_remap_shifts_citations_without_an_llm(self):
+        repo, root = self.ranged_repo()
+        original = (repo / "src/app.py").read_text(encoding="utf-8")
+        (repo / "src/app.py").write_text("import new\n" * 5 + original,
+                                         encoding="utf-8")
+        self.commit(repo, "insert five lines above the cited block")
+
+        remapped, skipped = akashic.remap_repo(root)
+        self.assertEqual((remapped, skipped), (["a"], []))
+        body = (repo / ".akashic/wiki/a.md").read_text(encoding="utf-8")
+        self.assertIn("[src/app.py:10-15](../../src/app.py#L10-L15)", body,
+                      "both the destination and the human-readable text shift")
+        self.assertNotIn("L5-L10", body)
+        self.assertIsNone(akashic.load_catalog(root)["pages"][0]["hash"],
+                          "a remapped page is blessed as tool-written")
+
+        self.commit(repo, "remapped")
+        akashic.anchor_repo(root)
+        self.assertEqual(akashic.compute_stale(root)["drifted"], [],
+                         "anchoring re-records the corrected ranges")
+
+    def test_remap_leaves_fenced_examples_alone(self):
+        repo, root = self.ranged_repo()
+        page = repo / ".akashic/wiki/a.md"
+        page.write_text(
+            "# A\n\nSources: [src/app.py:5-10](../../src/app.py#L5-L10)\n\n"
+            "```markdown\nSources: [src/app.py:5-10](../../src/app.py#L5-L10)\n```\n",
+            encoding="utf-8")
+        akashic.bless_pages(root, ["a"])
+        self.commit(repo, "page with a fenced example")
+        akashic.anchor_repo(root)
+        original = (repo / "src/app.py").read_text(encoding="utf-8")
+        (repo / "src/app.py").write_text("import new\n" * 5 + original,
+                                         encoding="utf-8")
+        self.commit(repo, "shift")
+
+        akashic.remap_repo(root)
+        body = page.read_text(encoding="utf-8")
+        fenced = body.split("```markdown\n")[1]
+        self.assertIn("L5-L10", fenced,
+                      "an example citation is documentation, not a dependency")
+        self.assertIn("#L10-L15", body.split("```markdown")[0],
+                      "the real citation still shifts")
+
+    def test_remap_never_rewrites_a_human_edited_page(self):
+        repo, root = self.ranged_repo()
+        with open(repo / ".akashic/wiki/a.md", "a", encoding="utf-8") as fh:
+            fh.write("\nHuman correction.\n")
+        original = (repo / "src/app.py").read_text(encoding="utf-8")
+        (repo / "src/app.py").write_text("import new\n" * 5 + original,
+                                         encoding="utf-8")
+        self.commit(repo, "shift under a hand-edited page")
+
+        remapped, skipped = akashic.remap_repo(root)
+        self.assertEqual((remapped, skipped), ([], ["a"]))
+        self.assertIn("L5-L10",
+                      (repo / ".akashic/wiki/a.md").read_text(encoding="utf-8"),
+                      "hard rule 2 covers line numbers too")
+
     def anchored_repo_with_lost_anchor(self):
         """Anchor properly, then point the catalog at a commit this clone does
         not have -- the shape a squash-merged runner PR or a shallow clone
@@ -887,6 +961,22 @@ class TestLoop(RepoCase):
                          akashic_loop.NEEDS_UPDATE,
                          "the update flow skips edited pages itself; the "
                          "other buckets still need doing")
+
+    def test_drift_only_never_reaches_a_model(self):
+        """Cited lines that moved without changing are arithmetic. That PR
+        contains no generated prose at all, which is what makes it the one
+        safe candidate for auto-merge later."""
+        report = {"stale": [], "edited": [], "orphaned": [], "uncovered": [],
+                  "missing": [], "planned": [], "drifted": [{"id": "a"}]}
+        self.assertEqual(akashic_loop.classify(report),
+                         akashic_loop.REMAP_ONLY)
+
+    def test_drift_alongside_real_work_still_updates(self):
+        report = {"stale": [{"id": "a", "changed": ["f.py"]}], "edited": [],
+                  "orphaned": [], "uncovered": [], "missing": [],
+                  "planned": [], "drifted": [{"id": "b"}]}
+        self.assertEqual(akashic_loop.classify(report),
+                         akashic_loop.NEEDS_UPDATE)
 
     def test_clean_repo_costs_nothing(self):
         report = {"stale": [], "edited": [], "orphaned": [], "uncovered": [],

@@ -396,12 +396,25 @@ fossilizes the wiki, which is worse than having no loop at all.
    covers everything, and the blob fallback has no diff to intersect. The refinement only
    ever *removes* a false positive; it never invents freshness.
 
+   **Drift is the cost of that precision, and `remap` is the payment.** Narrowing
+   staleness to "did the change touch my lines" means a change *above* them no longer
+   marks the page stale — while still moving the code the page points at. The recorded
+   numbers stay in bounds, so `verify` cannot catch it. `stale` therefore reports those
+   pages as `drifted`, and `remap` fixes them as arithmetic: shift each fragment by the
+   cumulative line delta above it, rewrite the `path:start-end` text to agree, rename
+   paths whose file moved, and bless. Fenced blocks are never rewritten — an example
+   citation is documentation, not a dependency — and a page in `edited` is never
+   rewritten either, because hard rule 2 covers line numbers too. Each page is blessed
+   in the same step as its rewrite, since a rewritten body under its old hash would read
+   as a human edit.
+
 | Bucket | Meaning | Action (agent-side) |
 |---|---|---|
 | `stale` | a file the page depends on changed | regenerate (same Phase-2 contract); regenerated citations refresh `files` at anchor time, so renames and dependency drift self-heal |
 | `edited` | current page hash ≠ recorded `hash` → a human touched it | **never auto-overwrite**; skip and warn by default; regenerate only on explicit request, passing the human text as immutable context to preserve |
 | `orphaned` | every file the page documented is gone | auto-delete page + catalog entry (git is the backstop) — **unless also `edited`: then flag only; human text is never destroyed by automation** |
 | `planned` | a catalog page with no generated file on disk | regenerate it, or say the run is deliberately partial. Reported rather than an error because a partly generated wiki is a valid resume state — but `verify` and `anchor` both skip non-done pages, so without this bucket a generate run whose subagents died reports `verify: ok`, stamps an anchor and shows a clean `stale` |
+| `drifted` | nothing the page cites changed, but something above it did, so the recorded line numbers now point elsewhere | run `remap`: shift each fragment by the cumulative delta above it, rewrite the human-readable text to match, bless. Zero LLM. This bucket exists because range-level staleness would otherwise leave the citation silently wrong — in bounds, so `verify` cannot see it |
 | `uncovered` | added files matching no page's scope∪files | if a coherent new module appeared, propose new catalog entries (visible as a catalog diff in review); otherwise note and ignore |
 
 4. The update run ends: regenerate stale pages → `verify` → `anchor` → print a

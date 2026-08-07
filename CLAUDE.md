@@ -34,6 +34,7 @@ python3 akashic.py -C <repo> stale --check # same, exit 1 if any bucket is non-e
 python3 akashic.py -C <repo> verify        # citation + catalog gate; exit 1 on any error
 python3 akashic.py -C <repo> anchor        # verify, then record deps/hashes, stamp anchor, render TOC
 python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent prompt
+python3 akashic.py -C <repo> remap         # shift drifted citations to new line numbers (no LLM)
 python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --done also flips status
 ```
 

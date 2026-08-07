@@ -52,7 +52,7 @@ SOURCES_RE = re.compile(r"^Sources:\s*(.*)$")
 # fails verification as "not tracked by git" instead of parsing correctly.
 LINK_RE = re.compile(r"\[(.*?)\]\((<[^<>]*>|(?:[^()\s]|\([^()\s]*\))+)\)")
 FRAGMENT_RE = re.compile(r"^L(\d+)(?:-L(\d+))?$")
-HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+")
+HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
 VALID_STATUS = {"planned", "done"}
 
@@ -595,7 +595,9 @@ def parse_diff_hunks(output):
             if match:
                 start = int(match.group(1))
                 count = 1 if match.group(2) is None else int(match.group(2))
-                hunks.setdefault(current, []).append((start, count))
+                new_count = 1 if match.group(4) is None else int(match.group(4))
+                hunks.setdefault(current, []).append(
+                    (start, count, new_count - count))
     return hunks
 
 
@@ -606,7 +608,7 @@ def hunk_touches_ranges(hunks, spans):
     touching [s, e] when it lands strictly inside the block (s <= N < e).
     An insertion immediately after the last cited line leaves the cited text
     exactly as it was, and the page keeps describing it correctly."""
-    for start, count in hunks:
+    for start, count, _delta in hunks:
         for span_start, span_end in spans:
             if count == 0:
                 if span_start <= start < span_end:
@@ -614,6 +616,45 @@ def hunk_touches_ranges(hunks, spans):
             elif start <= span_end and start + count - 1 >= span_start:
                 return True
     return False
+
+
+def shift_at(hunks, position):
+    """Cumulative line delta introduced strictly above `position`.
+
+    Only hunks that end before the position count: a hunk overlapping it is
+    not drift, it is a content change, and the page is stale rather than
+    shifted. This is what converts "the code I cite moved down five lines"
+    into arithmetic instead of a regeneration."""
+    delta = 0
+    for start, count, hunk_delta in hunks:
+        end = start + count - 1 if count else start
+        if end < position:
+            delta += hunk_delta
+    return delta
+
+
+def page_drift(ranges, hunks_by_path, renames):
+    """{path: (new_path, [(old_span, new_span), ...])} for a page whose cited
+    lines moved without changing.
+
+    Two kinds of drift, both fixable without an LLM: content that shifted
+    because something above it grew or shrank, and a path that was renamed
+    while its content stayed put. Anything whose cited lines were actually
+    touched is excluded by the caller -- that page is stale and needs prose,
+    not arithmetic."""
+    drift = {}
+    for path, spans in ranges.items():
+        new_path = renames.get(path, path)
+        hunks = hunks_by_path.get(path, [])
+        moved = []
+        for span_start, span_end in spans:
+            delta = shift_at(hunks, span_start)
+            if delta:
+                moved.append(((span_start, span_end),
+                              (span_start + delta, span_end + delta)))
+        if moved or new_path != path:
+            drift[path] = (new_path, moved)
+    return drift
 
 
 def touches_page(ranges, hunks_by_path, path):
@@ -682,7 +723,7 @@ def compute_stale(root):
         "anchor": anchor, "head": head, "anchor_reachable": True,
         "anchor_state": "ok", "dirty": dirty,
         "stale": [], "edited": [], "orphaned": [], "uncovered": [], "missing": [],
-        "planned": [],
+        "planned": [], "drifted": [],
     }
 
     # `missing` only ever inspects done pages, so it cannot see a page that was
@@ -754,6 +795,7 @@ def compute_stale(root):
     def outside_akashic(paths):
         return {p for p in paths if not p.startswith(AKASHIC_DIR + "/")}
 
+    rename_map = dict(renames)
     rename_paths = {o for o, _ in renames} | {n for _, n in renames}
     changed = outside_akashic(modified | deleted | rename_paths)
     added_now = outside_akashic(added | {n for _, n in renames})
@@ -775,6 +817,16 @@ def compute_stale(root):
             report["orphaned"].append(page["id"])
         elif hits:
             report["stale"].append({"id": page["id"], "changed": hits})
+        else:
+            # Not stale: nothing the page cites was touched. But if something
+            # above it grew, the cited lines are now at different numbers and
+            # the citation silently points at the wrong code -- in bounds, so
+            # verify cannot see it. Reported separately because the fix is
+            # arithmetic (`remap`), not a regeneration.
+            drift = page_drift(ranges, hunks_by_path, rename_map)
+            if drift:
+                report["drifted"].append(
+                    {"id": page["id"], "paths": sorted(drift)})
 
     # Coverage: `files` entries are exact paths (never patterns — a recorded
     # root Makefile must not shadow a new nested Makefile); `scope` is globs.
@@ -791,7 +843,8 @@ def compute_stale(root):
     return report
 
 
-WORK_BUCKETS = ("stale", "edited", "orphaned", "uncovered", "missing", "planned")
+WORK_BUCKETS = ("stale", "edited", "orphaned", "uncovered", "missing",
+                "planned", "drifted")
 
 
 def cmd_stale(root, check=False):
@@ -972,6 +1025,131 @@ def cmd_bless(root, page_ids, mark_done=False):
     return 0
 
 
+# ----------------------------------------------------------------------- remap
+
+def remap_body(body, drift):
+    """Rewrite a page's citations for content that moved without changing.
+
+    Only `Sources:` paragraphs are touched, and fenced blocks are skipped
+    entirely -- an example citation inside a fence is documentation, not a
+    dependency, and rewriting it would corrupt prose. Both halves of each link
+    are updated: the destination fragment a renderer follows, and the
+    human-readable `path:start-end` text, because a reader who sees them
+    disagree cannot tell which one lied."""
+    spans = {}
+    renamed = {}
+    for path, (new_path, moved) in drift.items():
+        renamed[path] = new_path
+        for old_span, new_span in moved:
+            spans[(path, old_span)] = new_span
+
+    def rewrite_link(match):
+        text, raw = match.group(1), match.group(2)
+        wrapped = raw.startswith("<") and raw.endswith(">")
+        dest = raw[1:-1] if wrapped else raw
+        target, sep, fragment = dest.partition("#")
+        rel = unquote(target)
+        path = rel.split("../")[-1]
+        if path not in renamed:
+            return match.group(0)
+        new_path = renamed[path]
+        new_fragment = fragment
+        frag_match = FRAGMENT_RE.match(fragment) if fragment else None
+        old_pair = new_pair = None
+        if frag_match:
+            start = int(frag_match.group(1))
+            end = int(frag_match.group(2)) if frag_match.group(2) else start
+            shifted = spans.get((path, (start, end)))
+            if shifted:
+                old_pair, new_pair = (start, end), shifted
+                new_fragment = (f"L{shifted[0]}-L{shifted[1]}"
+                                if frag_match.group(2) else f"L{shifted[0]}")
+        if new_path == path and new_fragment == fragment:
+            return match.group(0)
+        prefix = target[:len(target) - len(path)] or "../../"
+        new_dest = f"{prefix}{new_path}" + (f"#{new_fragment}" if sep else "")
+        new_text = text.replace(path, new_path) if new_path != path else text
+        if old_pair and new_pair:
+            new_text = new_text.replace(f"{old_pair[0]}-{old_pair[1]}",
+                                        f"{new_pair[0]}-{new_pair[1]}")
+        if wrapped:
+            new_dest = f"<{new_dest}>"
+        return f"[{new_text}]({new_dest})"
+
+    out, in_fence, in_sources = [], False, False
+    for line in body.split("\n"):
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence, in_sources = not in_fence, False
+        elif not in_fence:
+            if SOURCES_RE.match(line):
+                in_sources = True
+            elif in_sources and (not stripped or stripped.startswith("#")):
+                in_sources = False
+            if in_sources:
+                line = LINK_RE.sub(rewrite_link, line)
+        out.append(line)
+    return "\n".join(out)
+
+
+def remap_repo(root):
+    """Fix drifted citations page by page, blessing each as it lands.
+
+    Blessing immediately rather than in a batch at the end is deliberate: a
+    rewritten body under its old recorded hash reads as a human edit, so a
+    crash between the two would leave the tool's own arithmetic protected from
+    the tool. One page, one write, one bless."""
+    report = compute_stale(root)
+    if not report["anchor_reachable"]:
+        die("cannot remap without a reachable anchor: recorded line numbers "
+            "are anchor coordinates, and there is no diff to measure drift "
+            f"against ({report['anchor_state']})", code=1)
+    catalog = load_catalog(root)
+    by_id = {p["id"]: p for p in catalog["pages"]}
+    edited = set(report["edited"])
+    wiki = wiki_dir(root)
+
+    hunks_by_path = parse_diff_hunks(
+        git(root, "diff", "-U0", "-M", catalog["anchor"], "HEAD").stdout)
+    _, _, _, renames = parse_name_status(
+        git(root, "diff", "--name-status", "-M", "-z",
+            catalog["anchor"], "HEAD").stdout)
+    rename_map = dict(renames)
+
+    remapped, skipped = [], []
+    for entry in report["drifted"]:
+        page_id = entry["id"]
+        if page_id in edited:
+            # Hard rule 2: that body is human work, and rewriting even a line
+            # number inside it is still writing to it.
+            skipped.append(page_id)
+            continue
+        page = by_id[page_id]
+        drift = page_drift(page.get("ranges") or {}, hunks_by_path, rename_map)
+        if not drift:
+            continue
+        page_file = wiki / f"{page_id}.md"
+        body = page_file.read_text(encoding="utf-8")
+        new_body = remap_body(body, drift)
+        if new_body == body:
+            continue
+        page_file.write_text(new_body, encoding="utf-8")
+        bless_pages(root, [page_id])
+        remapped.append(page_id)
+    return remapped, skipped
+
+
+def cmd_remap(root):
+    remapped, skipped = remap_repo(root)
+    if remapped:
+        print(f"remapped {len(remapped)} page(s): {', '.join(remapped)}")
+    else:
+        print("remap: nothing drifted")
+    for page_id in skipped:
+        warn(f"page \"{page_id}\" drifted but is human-edited; not rewriting")
+    return 0
+
+
 # ---------------------------------------------------------------------- prompt
 
 # Common local-only agent-guidance filenames -- often excluded from git via
@@ -1098,6 +1276,9 @@ def main(argv=None):
     prompt_parser = sub.add_parser(
         "prompt", help="render the exact subagent prompt for one catalog page id")
     prompt_parser.add_argument("page_id")
+    sub.add_parser(
+        "remap",
+        help="shift drifted citations to their new line numbers (no LLM)")
     bless_parser = sub.add_parser(
         "bless", help="mark pages as tool-written (hash -> null) after regenerating")
     bless_parser.add_argument("page_ids", nargs="+", metavar="page-id")
@@ -1113,7 +1294,7 @@ def main(argv=None):
         return cmd_bless(root, args.page_ids, mark_done=args.done)
     if args.command == "stale":
         return cmd_stale(root, check=args.check)
-    command = {"scan": cmd_scan,
+    command = {"scan": cmd_scan, "remap": cmd_remap,
                "verify": cmd_verify, "anchor": cmd_anchor}[args.command]
     return command(root)
 

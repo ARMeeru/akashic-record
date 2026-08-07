@@ -34,6 +34,7 @@ DEFAULT_REPO_LIST = Path.home() / ".config" / "akashic-record" / "repos"
 CLEAN = "clean"
 NEEDS_UPDATE = "needs-update"
 REVIEW_ONLY = "review-only"
+REMAP_ONLY = "remap-only"
 
 
 def read_repo_list(text):
@@ -60,6 +61,11 @@ def classify(report):
                            "planned")}
     if any(work.values()):
         return NEEDS_UPDATE
+    if report.get("drifted"):
+        # Cited lines moved without changing. That is arithmetic, so it gets
+        # fixed by `remap` and never reaches a model -- the cheapest possible
+        # cycle, and the only kind whose PR contains no generated prose.
+        return REMAP_ONLY
     if report.get("edited"):
         return REVIEW_ONLY
     return CLEAN
@@ -68,7 +74,7 @@ def classify(report):
 def summarize(report):
     parts = [f"{bucket}={len(report[bucket])}"
              for bucket in ("stale", "edited", "orphaned", "uncovered",
-                            "missing", "planned")
+                            "missing", "planned", "drifted")
              if report.get(bucket)]
     if report.get("anchor_state", "ok") != "ok":
         parts.append(report["anchor_state"])
@@ -113,6 +119,28 @@ def run(cmd, cwd=None, check=True):
     return result
 
 
+def remap_repo(repo, branch, dry_run=False):
+    """The zero-LLM path: shift drifted citations, verify, anchor, open a PR.
+
+    Nothing generated, nothing stochastic -- the diff is a handful of line
+    numbers a reviewer can check against the code in seconds."""
+    if dry_run:
+        print(f"  would: branch {branch}, remap citations, open a PR (no LLM)")
+        return
+    run(["git", "switch", "-c", branch], cwd=repo)
+    run([sys.executable, str(AKASHIC), "-C", repo, "remap"])
+    run([sys.executable, str(AKASHIC), "-C", repo, "verify"])
+    if not run(["git", "status", "--porcelain"], cwd=repo).stdout.strip():
+        raise RuntimeError("remap reported drift but rewrote nothing")
+    run(["git", "add", ".akashic"], cwd=repo)
+    run(["git", "commit", "-m", "chore: remap drifted citations"], cwd=repo)
+    run([sys.executable, str(AKASHIC), "-C", repo, "anchor"])
+    run(["git", "add", ".akashic"], cwd=repo)
+    run(["git", "commit", "-m", "chore: anchor remapped wiki"], cwd=repo)
+    run(["git", "push", "-u", "origin", branch], cwd=repo)
+    run(["gh", "pr", "create", "--fill"], cwd=repo)
+
+
 def update_repo(repo, branch, dry_run=False):
     """Branch, run the skill's update flow headlessly, open a PR.
 
@@ -155,6 +183,13 @@ def process(repo, dry_run=False):
     print(f"  {summarize(report)} -> {verdict}")
 
     if verdict == CLEAN:
+        return 0
+    if verdict == REMAP_ONLY:
+        try:
+            remap_repo(repo, "chore/wiki-remap", dry_run=dry_run)
+        except RuntimeError as exc:
+            notify(f"{repo}: {exc}")
+            return 2
         return 0
     if verdict == REVIEW_ONLY:
         notify(f"{repo}: {len(report['edited'])} page(s) edited by hand; "
