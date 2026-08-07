@@ -2164,8 +2164,40 @@ def cmd_audit_extract(root, page_id=None):
     return 0
 
 
-def cmd_audit_prompt(root, page_id):
-    print(render_audit_prompt(root, page_id))
+def cmd_audit_prompt(root, page_id, out=None):
+    text = render_audit_prompt(root, page_id)
+    if out is None:
+        print(text)
+        return 0
+    # Evidence spans are verbatim source, so these prompts are large -- one
+    # page in this repo renders 224KB. Printing it costs that twice: once to
+    # read it into the orchestrator's context, once to paste it into the
+    # judge's, and the orchestrator gains nothing from having read it.
+    #
+    # Handing over a path is not weaker than the current arrangement. The
+    # judge is a subagent with tools; its blindness has always been a
+    # contract -- "you have no repository access", "do not ask for more
+    # evidence" -- and never a sandbox. Telling it to read one file is the
+    # same kind of instruction, at half the price.
+    target = Path(out)
+    resolved = target if target.is_absolute() else (Path.cwd() / target)
+    try:
+        inside = resolved.resolve().relative_to((root / AKASHIC_DIR).resolve())
+    except ValueError:
+        inside = None
+    if inside is not None:
+        die(f"refusing to write a scratch prompt inside {AKASHIC_DIR}/: it "
+            "would be picked up as an uncovered file and committed with the "
+            "wiki. Write it somewhere temporary instead.")
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        die(f"could not write {resolved}: {exc}")
+    print(f"wrote {len(text.encode('utf-8'))} bytes to {resolved}")
+    print("Dispatch to one subagent, verbatim: \"Read the file at "
+          f"{resolved} in full and follow the instructions in it. Read "
+          "nothing else.\"")
     return 0
 
 
@@ -2214,6 +2246,10 @@ def main(argv=None):
     audit_prompt_parser = audit_sub.add_parser(
         "prompt", help="render the blind refuter prompt for one page")
     audit_prompt_parser.add_argument("page_id")
+    audit_prompt_parser.add_argument(
+        "--out", metavar="PATH",
+        help="write the prompt to PATH and print a dispatch line instead, so "
+             "a large prompt does not pass through the orchestrator twice")
     bless_parser = sub.add_parser(
         "bless", help="mark pages as tool-written (hash -> null) after regenerating")
     bless_parser.add_argument("page_ids", nargs="+", metavar="page-id")
@@ -2226,7 +2262,7 @@ def main(argv=None):
     if args.command == "audit":
         if args.audit_command == "extract":
             return cmd_audit_extract(root, args.page)
-        return cmd_audit_prompt(root, args.page_id)
+        return cmd_audit_prompt(root, args.page_id, out=args.out)
     if args.command == "prompt":
         return cmd_prompt(root, args.page_id, update=args.update)
     if args.command == "bless":

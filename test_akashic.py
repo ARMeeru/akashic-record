@@ -1639,6 +1639,37 @@ class TestAudit(RepoCase):
         self.assertIn("Section: Bare", text)
         self.assertIn("EVIDENCE: none", text)
 
+    def test_out_writes_the_prompt_and_prints_only_a_dispatch_line(self):
+        """Evidence spans are verbatim source, so these prompts are large --
+        one page in this repo renders 224KB. Printing it costs that twice:
+        once into the orchestrator's context, once into the judge's, and the
+        orchestrator gains nothing from having read it."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        out = Path(tempfile.mkdtemp(prefix="akashic-out-")) / "p.md"
+        self.addCleanup(shutil.rmtree, out.parent, ignore_errors=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = akashic.cmd_audit_prompt(root, "index", out=str(out))
+        self.assertEqual(code, 0)
+        self.assertIn("def alpha():", out.read_text())
+        self.assertNotIn("def alpha():", buf.getvalue(),
+                         "the prompt body must not also go to stdout")
+        self.assertIn(str(out), buf.getvalue())
+
+    def test_out_refuses_to_write_inside_the_wiki_directory(self):
+        """A 200KB scratch file there is picked up as `uncovered` and
+        committed with the wiki."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        with self.assertRaises(SystemExit) as ctx:
+            akashic.cmd_audit_prompt(
+                root, "index", out=str(root / ".akashic" / "scratch.md"))
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertFalse((root / ".akashic" / "scratch.md").exists())
+
     def test_unknown_page_ids_fail_rather_than_auditing_nothing(self):
         root = self.audit_repo(
             "# Index\n\n## Alpha\n\nOne.\n\n"

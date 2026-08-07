@@ -47,7 +47,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | `plan-check` | shape checks on the catalog before a fan-out | JSON + warnings; always exit 0 |
 | `plan-critic` | render the adversarial plan-review prompt for the whole catalog | text — dispatch it verbatim |
 | `audit extract [--page <id>]` | claim/evidence bundles per H2 section | JSON |
-| `audit prompt <id>` | render the blind refuter prompt for one page | text — dispatch it verbatim |
+| `audit prompt <id> [--out PATH]` | render the blind refuter prompt for one page; `--out` writes it to a file | text — dispatch it verbatim |
 | `bless <id>...` | mark pages as tool-written after regenerating them (`hash` → null); `--done` also flips `status` | summary |
 
 Exit codes: 0 ok, 1 verification failure, 2 precondition/usage error (e.g. no git repo,
@@ -230,8 +230,10 @@ no commits, too many files — relay these to the user verbatim; they are action
 ## Flow: audit (on demand only)
 
 Reach for this when a page smells wrong — never on a schedule, never as a gate. Run
-`audit prompt <id>` and dispatch the text verbatim to **one subagent with no other
-context**. It renders every claim on the page beside the exact bytes that claim cites,
+`audit prompt <id> --out <tmp>` and dispatch to **one subagent with no other context**:
+"read that file in full and follow it, read nothing else". Without `--out` the whole
+prompt passes through your context and then through the judge's, which for a large
+page is 200KB paid twice for no benefit. It renders every claim on the page beside the exact bytes that claim cites,
 with the files labelled `[E1]`, `[E2]` instead of named, so the judge cannot fill gaps
 with what a file of that name usually contains — the failure mode behind every planning
 defect this project has recorded.
