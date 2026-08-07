@@ -21,7 +21,7 @@ Sources: [bin/akashic_loop.py:1-27](../../bin/akashic_loop.py#L1-L27), [bin/akas
 
 A repo with `edited` *alongside* real work is still classified `needs-update`, because the other buckets genuinely need doing. Skipping the edited pages themselves is the update flow's job, not the classifier's — the loop does not try to re-implement a rule the skill already enforces.
 
-Sources: [bin/akashic_loop.py:34-44](../../bin/akashic_loop.py#L34-L44), [bin/akashic_loop.py:61-82](../../bin/akashic_loop.py#L61-L82), [bin/akashic_loop.py:212-242](../../bin/akashic_loop.py#L212-L242)
+Sources: [bin/akashic_loop.py:34-44](../../bin/akashic_loop.py#L34-L44), [bin/akashic_loop.py:61-82](../../bin/akashic_loop.py#L61-L82), [bin/akashic_loop.py:212-249](../../bin/akashic_loop.py#L212-L249)
 
 ## Which PRs may merge themselves
 
@@ -41,7 +41,7 @@ Before it will open that PR, three things must hold: the update flow itself must
 
 The reasoning behind the PR is that this output is produced while nobody is watching. A pull request is the cheapest possible place to put a human back in the path without making the loop wait for one.
 
-Sources: [bin/akashic_loop.py:124-131](../../bin/akashic_loop.py#L124-L131), [bin/akashic_loop.py:177-209](../../bin/akashic_loop.py#L177-L209)
+Sources: [bin/akashic_loop.py:124-130](../../bin/akashic_loop.py#L124-L130), [bin/akashic_loop.py:177-209](../../bin/akashic_loop.py#L177-L209)
 
 ## Never exit 0 on failure
 
@@ -58,20 +58,20 @@ flowchart TD
     U -- ok --> PR[open PR, exit 0]
 ```
 
-Sources: [bin/akashic_loop.py:212-242](../../bin/akashic_loop.py#L212-L242)
+Sources: [bin/akashic_loop.py:212-249](../../bin/akashic_loop.py#L212-L249)
 
 Across a fleet the worst outcome wins, so one broken repo cannot be hidden by nine healthy ones. A missing or empty repo list is itself a failure rather than a quiet no-op, because a loop configured into silence looks identical to a loop with nothing to do. The stated reason is that a set-and-forget loop failing silently fossilizes the wiki, which is worse than having no loop at all: you would go on believing the docs were current.
 
 Failures reach the owner through `notify`, which always writes to stderr — enough for a scheduler that mails output — and additionally pipes the message to whatever command `$AKASHIC_NOTIFY` names. A notification hook that itself fails is caught and reported rather than being allowed to take down the run.
 
-Sources: [bin/akashic_loop.py:95-106](../../bin/akashic_loop.py#L95-L106), [bin/akashic_loop.py:244-269](../../bin/akashic_loop.py#L244-L269)
+Sources: [bin/akashic_loop.py:95-106](../../bin/akashic_loop.py#L95-L106), [bin/akashic_loop.py:252-281](../../bin/akashic_loop.py#L252-L281)
 
 ## Configuration
 
 The fleet is a plain text file: one repository path per line, `#` comments and blank lines ignored, `~` expanded so paths are never handed to git with a tilde in them. It is read from `--repos`, else `$AKASHIC_REPOS`, else `~/.config/akashic-record/repos`. The list lives outside the repository on purpose — which repos a person maintains is machine-local, not something to commit to a shared project.
 
-`--dry-run` reports what each repo would need and spends nothing, which is also the safe way to confirm a schedule is pointed at the right paths.
+`--dry-run` reports what each repo would need and spends nothing, which is also the safe way to confirm a schedule is pointed at the right paths. It fires the notification hook too, for any repo that is not clean: under a scheduler stdout is a log file nobody opens, and report-only is the mode an install is meant to start in, so a dry run that only printed would make a fleet needing work look exactly like a quiet one. A clean dry run stays silent, because a banner that always arrives is a banner that stops being read.
 
-Sources: [bin/akashic_loop.py:29-32](../../bin/akashic_loop.py#L29-L32), [bin/akashic_loop.py:51-58](../../bin/akashic_loop.py#L51-L58), [bin/akashic_loop.py:85-92](../../bin/akashic_loop.py#L85-L92)
+Sources: [bin/akashic_loop.py:29-32](../../bin/akashic_loop.py#L29-L32), [bin/akashic_loop.py:51-58](../../bin/akashic_loop.py#L51-L58), [bin/akashic_loop.py:85-92](../../bin/akashic_loop.py#L85-L92), [bin/akashic_loop.py:212-249](../../bin/akashic_loop.py#L212-L249), [bin/akashic_loop.py:252-281](../../bin/akashic_loop.py#L252-L281)
 
-*Generated from commit `e21a66d` on 2026-08-07.*
+*Generated from commit `66f9e52a` on 2026-08-07.*
