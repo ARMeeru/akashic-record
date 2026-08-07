@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "22e712eb39fe496627751d7cbb0a13ddd48b578f",
-  "generated": "2026-08-07T12:41:21Z",
+  "anchor": "dea8c27edfbc08b4043036d64c343d1396e5e652",
+  "generated": "2026-08-07T14:08:57Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,12 +30,12 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:c22a1a14a9b84a5d5ec6afa872aca7c018f9db8e964dadc7b5600c6a83a1c3f0",
+      "hash": "sha256:88e30868b553ab3afc02946500a806f8ffc8a6db523da6a06cf56740540be9d0",
       "frozen": false,
       "blobs": {
-        "CLAUDE.md": "ea9fc633a0a99a58060b5b9af6c54ac990d87c1d",
+        "CLAUDE.md": "58952348a7ab9417d5479a1ddc2b93c4855fc26f",
         "CONTRIBUTING.md": "85e0da41202b7d09f049ef65cad8f729c2eaac36",
-        "DESIGN.md": "2a286287a86eb808e6acae580baec6446cc212d5",
+        "DESIGN.md": "d67e2ec5c47384f6f0ac3a8e53a2240526b7ed31",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
         "README.md": "0057d7cddcefd5143fff5e6e793ebda903f4f1eb",
         "SECURITY.md": "bfc548840a65633e8f1db49bb576b069bcf0d52f"
@@ -64,15 +64,15 @@
           ],
           [
             52,
-            69
+            70
           ],
           [
-            71,
-            73
+            72,
+            74
           ],
           [
-            75,
-            77
+            76,
+            78
           ]
         ],
         "CONTRIBUTING.md": [
@@ -167,32 +167,32 @@
             410
           ],
           [
-            424,
-            441
+            438,
+            455
           ],
           [
-            443,
-            528
+            457,
+            542
           ],
           [
-            534,
-            557
+            548,
+            571
           ],
           [
-            677,
-            682
+            691,
+            696
           ],
           [
-            790,
-            810
+            804,
+            824
           ],
           [
-            823,
-            835
+            837,
+            849
           ],
           [
-            839,
-            846
+            853,
+            860
           ]
         ],
         "LICENSE": [
@@ -262,11 +262,11 @@
         "test_akashic.py"
       ],
       "status": "done",
-      "hash": "sha256:9cd66a5b0727e070d8d2a8fd4d72e2a30afb0ea35007c15abb2ca61be1011f10",
+      "hash": "sha256:8a51418ff25805cecb35f6b89bd4afdd0de5b2248e93de939ae7e10d857bb6a2",
       "frozen": false,
       "blobs": {
-        "akashic.py": "c13eff187b91da4111996bbe71337ea3a986891e",
-        "test_akashic.py": "9e8e52d0279dedbe783e2ce00d23afee1b06fed2"
+        "akashic.py": "b7d3b79fc4156b51f6ea789d12b1e3a1903da584",
+        "test_akashic.py": "04cc62e0aca63d1dcfe777033b519a2e3f1044b0"
       },
       "ranges": {
         "akashic.py": [
@@ -516,43 +516,43 @@
           ],
           [
             1957,
-            2078
+            2100
           ],
           [
-            2081,
-            2085
+            2103,
+            2107
           ],
           [
-            2102,
-            2122
+            2124,
+            2144
           ],
           [
-            2125,
-            2133
+            2147,
+            2155
           ],
           [
-            2136,
-            2188
+            2158,
+            2210
           ],
           [
-            2195,
-            2211
+            2217,
+            2233
           ],
           [
-            2214,
-            2314
+            2236,
+            2336
           ],
           [
-            2317,
-            2360
+            2339,
+            2382
           ],
           [
-            2342,
-            2431
+            2364,
+            2453
           ],
           [
-            2401,
-            2420
+            2423,
+            2442
           ]
         ],
         "test_akashic.py": [
@@ -610,23 +610,23 @@
           ],
           [
             1191,
-            1448
+            1465
           ],
           [
-            1451,
-            1604
+            1468,
+            1621
           ],
           [
-            1607,
-            1732
+            1624,
+            1749
           ],
           [
-            1735,
-            1906
+            1752,
+            1923
           ],
           [
-            1909,
-            2055
+            1926,
+            2072
           ]
         ]
       },

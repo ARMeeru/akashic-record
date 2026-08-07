@@ -421,6 +421,20 @@ and writes `wiki/<id>.md`. On success the orchestrator flips that page's `status
 
 Standing generation instructions that matter:
 
+- **Three generation disciplines**, rendered into every page prompt. These are the
+  failure modes a blind claim audit found on *every* page it was ever pointed at across
+  four runs against a real 28-page repo — seven distinct pages, all materially wrong.
+  They are standing instructions rather than another gate because the gates only ever
+  returned the same reading: the prose was wrong. Encoding a finding in a page's brief is
+  the one intervention that has demonstrably produced a correct rewrite.
+  (a) **Scope every generalization to what was actually read** — no `all`, `every`,
+  `both`, `each` or `entirely` across a family of files on the strength of some of them;
+  name the files a statement covers. (b) **An absence claim needs its method** — "no
+  guard", "no write", "no caller" is not establishable from an excerpt, so either state
+  how it was checked or do not claim it; a reader cannot distinguish a checked absence
+  from an assumed one. (c) **Write only what the goal asks for** — where a goal defers a
+  subject to another page, cross-link and stop, because the files that would support it
+  are outside the citable set and anything written about it rests on nothing.
 - **Cite-or-omit**: prefer "not documented here" over invention; every non-obvious claim
   carries a `Sources:` entry. (Mitigation for the verified cross-system failure mode:
   all benchmarked generators degrade sharply on C/C++ — ~53–56% vs ~79% on
