@@ -127,7 +127,19 @@ Reparenting here is a one-line catalog edit; no file moves, ever.
   dependency is byte-identical **without needing the anchor commit to still exist**.
   That is what makes an unreachable anchor recoverable rather than catastrophic (§5).
 - `goal_hash` — sha256 of the `goal` the page was last generated from, recorded at
-  anchor time. Staleness answers "did the code move?"; nothing answered "did what we
+  anchor time **only for pages the tool actually wrote that run** (`hash` null, the bless
+  signal). Stamping it unconditionally was the same mistake the `hash` rule below exists
+  to prevent, made three lines above it: for a page nobody regenerated, the text came
+  from an *earlier* goal, so recording the current one asserts a correspondence nothing
+  checked and destroys the true baseline. It cost a real run — ten corrected goals were
+  stamped onto pages that were never rewritten, `stale` reported clean, and the affected
+  pages could afterwards be identified only from a human's memory of the previous
+  session. An unblessed page carries its existing baseline forward untouched, so a later
+  goal edit still surfaces as `restated`. An unblessed page with *no* baseline (a catalog
+  predating the field) gets none invented: the tool does not know which goal produced
+  that text. That leaves a real hole — a goal edit there is undetectable until the page
+  is next generated — so `plan-check` reports the count rather than papering over it, and
+  it clears itself as pages turn over. Staleness answers "did the code move?"; nothing answered "did what we
   asked of this page move?", and both plan gates (§4 Phases 1b/1c) produce goal and
   scope edits as their primary output. Without this, a critic finding on a page that
   happened not to be stale was written into the catalog and never reached the page —
@@ -308,6 +320,10 @@ It emits JSON on stdout and a plain-language warning per finding on stderr:
   state. The threshold is read from that documented rule rather than invented here, so
   the two cannot drift apart.
 - **`empty_goal` / `duplicate_titles`** — catalog sanity.
+- **`no_goal_baseline`** — done pages with no recorded `goal_hash`, on which a goal edit
+  cannot be detected until they are next generated. A catalog predating that field is
+  otherwise indistinguishable from a fully tracked one, and the difference is invisible
+  precisely where it matters.
 - **`pages`** — expanded file and line totals per page, biggest first. Data rather than a
   finding: a 10k-line outlier should be visible before dispatch instead of in the bill,
   and picking a threshold for "too big" would be inventing one.

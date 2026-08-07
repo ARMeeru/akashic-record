@@ -1317,10 +1317,23 @@ def anchor_repo(root):
         # file-level staleness, which is the conservative default.
         page["ranges"] = {path: sorted(spans)
                           for path, spans in sorted(ranges.items())}
-        # The brief this page was generated from. Without it a corrected goal
-        # sits in the catalog describing a page that does not match it, with
-        # nothing to say so -- see compute_restated.
-        page["goal_hash"] = goal_hash(page.get("goal"))
+        # The brief this page was generated from -- recorded only when the
+        # tool actually wrote the page this run. Stamping it unconditionally
+        # was the same mistake the `hash` rule below exists to prevent, made
+        # three lines above it: for a page nobody regenerated, the text came
+        # from some earlier goal, and recording the current one asserts a
+        # correspondence nothing checked while destroying the true baseline.
+        # It cost a real run: ten corrected goals were stamped onto pages that
+        # were never rewritten, `stale` reported clean, and the affected pages
+        # could only be found from a human's memory of the previous session.
+        #
+        # An absent field on an unblessed page is the honest state and is left
+        # absent: the tool does not know which goal produced that text. That
+        # is a real hole -- a goal edit there stays undetectable until the page
+        # is next generated -- so `plan-check` reports the count rather than
+        # papering over it.
+        if page.get("hash") is None:
+            page["goal_hash"] = goal_hash(page.get("goal"))
 
         # The recorded hash permanently means "what the tool wrote". A null
         # hash is the bless signal (the orchestrator sets it after writing a
@@ -1599,7 +1612,7 @@ def plan_check(root):
     report = {"pages": sorted(pages, key=lambda p: -p["lines"]),
               "no_scope": [], "empty_scope": [], "empty_goal": [],
               "duplicate_titles": [], "oversized": [], "subset": [],
-              "overlap": []}
+              "overlap": [], "no_goal_baseline": []}
 
     by_title = {}
     for page in catalog["pages"]:
@@ -1614,6 +1627,13 @@ def plan_check(root):
             report["empty_scope"].append(pid)
         if not (page.get("goal") or "").strip():
             report["empty_goal"].append(pid)
+        # No recorded goal baseline: `anchor` will not invent one for a page
+        # it did not generate, so a goal edit here is undetectable until the
+        # page is next written. Self-clearing, and reported rather than
+        # silently tolerated -- a catalog predating `goal_hash` is otherwise
+        # indistinguishable from one that is fully tracked.
+        if page.get("status") == "done" and not page.get("goal_hash"):
+            report["no_goal_baseline"].append(pid)
         if len(files) > SPLIT_THRESHOLD:
             report["oversized"].append({"id": pid, "files": len(files)})
         by_title.setdefault((page.get("title") or "").strip().lower(),
@@ -1647,7 +1667,7 @@ def plan_check(root):
 
 
 PLAN_FINDINGS = ("no_scope", "empty_scope", "empty_goal", "duplicate_titles",
-                 "oversized", "subset", "overlap")
+                 "oversized", "subset", "overlap", "no_goal_baseline")
 
 
 def cmd_plan_check(root):
@@ -1663,6 +1683,11 @@ def cmd_plan_check(root):
              "fix the globs before dispatching a subagent to it")
     for item in report["empty_goal"]:
         warn(f"plan-check: \"{item}\" has an empty goal")
+    if report["no_goal_baseline"]:
+        warn(f"plan-check: {len(report['no_goal_baseline'])} page(s) have no "
+             "recorded goal baseline, so a goal edit on them will not be "
+             "reported until they are next generated: "
+             + ", ".join(report["no_goal_baseline"]))
     for item in report["duplicate_titles"]:
         warn(f"plan-check: {len(item['ids'])} pages share the title "
              f"\"{item['title']}\": {', '.join(item['ids'])}")

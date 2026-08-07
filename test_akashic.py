@@ -494,6 +494,66 @@ class TestRestated(RepoCase):
         self.assertTrue(all(not report[b] for b in akashic.WORK_BUCKETS),
                         f"post-anchor invariant must still hold: {report}")
 
+    def test_anchor_records_a_goal_baseline_only_for_pages_it_wrote(self):
+        """The bug that cost a real run. Stamping `goal_hash` on every done
+        page asserts a correspondence nothing checked: for a page nobody
+        regenerated, the text came from an *earlier* goal. Ten corrected goals
+        were stamped onto pages that were never rewritten, `stale` reported
+        clean, and the affected pages could only be found from memory."""
+        repo, root = self.brief_repo()
+        first = json.loads((repo / ".akashic" / "catalog.json").read_text())
+        recorded = first["pages"][0]["goal_hash"]
+        self.assertTrue(recorded, "a freshly generated page gets a baseline")
+
+        # Goal corrected, page deliberately NOT regenerated, then anchored.
+        self.edit_catalog(repo, goal="document a and its callers")
+        akashic.anchor_repo(root)
+        self.commit(repo, "anchor without regenerating")
+
+        after = json.loads((repo / ".akashic" / "catalog.json").read_text())
+        self.assertEqual(after["pages"][0]["goal_hash"], recorded,
+                         "the old baseline must survive: the text still came "
+                         "from the old goal")
+        self.assertEqual(akashic.compute_stale(root)["restated"],
+                         [{"id": "p", "goal_changed": True}],
+                         "and the page must stay reported, not be blessed "
+                         "into agreement by the anchor")
+
+    def test_a_page_with_no_baseline_is_reported_rather_than_invented(self):
+        """A catalog predating `goal_hash`. The tool does not know which goal
+        produced the text, so it records nothing -- and says so, because an
+        untracked page is otherwise indistinguishable from a tracked one."""
+        repo, root = self.brief_repo()
+        path = repo / ".akashic" / "catalog.json"
+        data = json.loads(path.read_text())
+        data["pages"][0].pop("goal_hash")
+        path.write_text(json.dumps(data, indent=2))
+        self.commit(repo, "strip baseline")
+
+        akashic.anchor_repo(root)
+        self.commit(repo, "anchor")
+        after = json.loads(path.read_text())
+        self.assertNotIn("goal_hash", after["pages"][0],
+                         "anchor must not invent a baseline for text it did "
+                         "not write")
+        self.assertEqual(akashic.plan_check(root)["no_goal_baseline"], ["p"])
+
+    def test_regenerating_clears_a_missing_baseline(self):
+        """The hole is self-clearing: any page written by the tool gains a
+        true baseline, so the migration completes as pages turn over."""
+        repo, root = self.brief_repo()
+        path = repo / ".akashic" / "catalog.json"
+        data = json.loads(path.read_text())
+        data["pages"][0].pop("goal_hash")
+        path.write_text(json.dumps(data, indent=2))
+        self.commit(repo, "strip baseline")
+        self.assertEqual(akashic.plan_check(root)["no_goal_baseline"], ["p"])
+
+        akashic.bless_pages(root, ["p"])
+        akashic.anchor_repo(root)
+        self.commit(repo, "regen")
+        self.assertEqual(akashic.plan_check(root)["no_goal_baseline"], [])
+
     def test_the_runner_gate_sees_it(self):
         repo, root = self.brief_repo()
         self.edit_catalog(repo, scope=["src/*"])
