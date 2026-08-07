@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "0b63b216ddf8e7ab56b8643afb6624e587df5929",
-  "generated": "2026-08-07T04:17:24Z",
+  "anchor": "96d497bef040d21980b023aa9d2f2d8b995c7dd1",
+  "generated": "2026-08-07T04:38:51Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,14 +30,14 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:f8b31227c5a1e21317ad6a457ecc23efa5947a0a2197550fccc525e4778201fc",
       "frozen": false,
       "blobs": {
         "CLAUDE.md": "1cac932c9a47b08af9f79206ebdfa3928263af7d",
         "CONTRIBUTING.md": "85e0da41202b7d09f049ef65cad8f729c2eaac36",
-        "DESIGN.md": "f228e978e4be6febf5f2700a36d18cdeee1942ae",
+        "DESIGN.md": "505a6e50d2a1b91c39931d912e1b429785b2c14a",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
-        "README.md": "a2e76ba384c09f03c7df168acc97176a54fd58ce",
+        "README.md": "c4e693fc8be84486b407043d7373945be6d34edd",
         "SECURITY.md": "bfc548840a65633e8f1db49bb576b069bcf0d52f"
       }
     },
@@ -55,11 +55,11 @@
         "test_akashic.py"
       ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:ecbd37ef65ed7082ec8796fe53e30a3d135cf8be762eeb9429b0b0da01607f00",
       "frozen": false,
       "blobs": {
         "akashic.py": "727acba102282bfd30100d35f158d8ab726529be",
-        "test_akashic.py": "5fe448ab394b8e24a64da40f92d3b389e91805cd"
+        "test_akashic.py": "2cf6a6456e726abd669ac6d1cf282f0b4333a7fb"
       }
     },
     {
@@ -70,10 +70,15 @@
       "scope": [
         "bin/*"
       ],
-      "files": [],
+      "files": [
+        "bin/akashic_loop.py"
+      ],
       "status": "done",
-      "hash": null,
-      "frozen": false
+      "hash": "sha256:417dd3fce60bcdf91ede89b307449f227557ac0caa9cebfaeacf25711ac4c944",
+      "frozen": false,
+      "blobs": {
+        "bin/akashic_loop.py": "08e662e876bfdfe962ee59976e36d86ca4f1aeec"
+      }
     },
     {
       "id": "skill-orchestration",
