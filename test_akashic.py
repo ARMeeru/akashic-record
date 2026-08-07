@@ -703,6 +703,26 @@ class TestReviewRegressions(RepoCase):
         self.assertEqual(errors, [])
         self.assertNotIn("anchored to", stderr)
 
+    def test_content_split_across_two_citations_is_still_covered(self):
+        """Found by running this check against this repo's own wiki. A page
+        that grows splits one region across two citations with a blank line
+        between them; testing each citation on its own called that a hole and
+        warned about a correct page. Coverage is their union."""
+        root = self.anchored_range_repo(
+            "[src/app.py:5-6](../../src/app.py#L5-L6), "
+            "[src/app.py:7-7](../../src/app.py#L7-L7)",
+            prelude="# a\n# b\n# c\n# d\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("anchored to", stderr)
+
+    def test_merge_spans_bridges_whitespace_only_gaps(self):
+        lines = ["a", "", "b", "   ", "c", "x", "d"]
+        self.assertEqual(akashic.merge_spans([(1, 1), (3, 3)], lines),
+                         [(1, 3)], "a blank-only gap is not a hole")
+        self.assertEqual(akashic.merge_spans([(1, 1), (7, 7)], lines),
+                         [(1, 1), (7, 7)], "real content between them is")
+
     def test_unreachable_anchor_says_nothing(self):
         """Every page is already reported stale in that state, so a warning per
         span would be noise on every shallow clone."""

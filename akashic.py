@@ -492,6 +492,27 @@ def locate_edges(lines, edges, length):
     return ordered[0] if len(ordered) == 1 else None
 
 
+def merge_spans(spans, lines=None):
+    """Overlapping and adjacent spans collapsed into disjoint ones, sorted.
+
+    With `lines`, two spans separated only by blank lines also merge. A page
+    that splits one region across two citations leaves a one- or two-line
+    whitespace gap between them, and treating that as a hole would report a
+    correct page as having lost content -- the precise kind of false warning
+    that gets a whole class filtered out unread."""
+    merged = []
+    for start, end in sorted(spans):
+        gap_is_blank = (
+            merged and lines is not None and start > merged[-1][1]
+            and not any(line.strip()
+                        for line in lines[merged[-1][1]:start - 1]))
+        if merged and (start <= merged[-1][1] + 1 or gap_is_blank):
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return [(s, e) for s, e in merged]
+
+
 def check_anchored_content(root, anchor, page, rel, current, cache):
     """Warn when code a page was anchored to is covered by none of its citations.
 
@@ -520,6 +541,11 @@ def check_anchored_content(root, anchor, page, rel, current, cache):
                 encoding="utf-8", errors="surrogateescape").split("\n")
         except OSError:
             continue
+        # Coverage is the union of this page's citations for the file, not any
+        # single one: a region legitimately gets split across two adjacent
+        # citations when a page grows, and calling that uncovered would be a
+        # false warning on a correct page.
+        covered = merge_spans(current.get(path, []), new)
         uncovered = []
         for start, end in sorted({tuple(s) for s in spans}):
             edges = span_edges(old, start, end)
@@ -529,7 +555,7 @@ def check_anchored_content(root, anchor, page, rel, current, cache):
             if not found:
                 continue  # repeated boundary lines: no answer beats a guess
             lo, hi = found
-            if any(s <= lo and hi <= e for s, e in current.get(path, [])):
+            if any(s <= lo and hi <= e for s, e in covered):
                 continue
             uncovered.append((start, end, lo, hi))
         if not uncovered:
