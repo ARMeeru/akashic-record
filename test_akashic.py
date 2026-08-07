@@ -1261,6 +1261,23 @@ class TestReviewRegressions(RepoCase):
         self.assertIn("NOT tracked by git", out)
         self.assertIn("Orient a new developer.", out)
 
+    def test_prompt_carries_the_three_generation_disciplines(self):
+        """The failure modes a blind claim audit found on every page it was
+        ever pointed at, across four runs against a real 28-page repo. They
+        are rendered rather than gated because the gates only ever reported
+        the same result -- the prose was wrong -- and encoding a finding in a
+        page's brief is the one intervention that produced a correct rewrite.
+        Their absence would be silent, so it is asserted."""
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "one\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("p", scope=["src/*"])])
+        text = akashic.render_prompt(
+            akashic.repo_root(repo), akashic.load_catalog(akashic.repo_root(repo)), "p")
+        self.assertIn("Scope every generalization", text)
+        self.assertIn("absence claim needs its method", text)
+        self.assertIn("Write only what the goal asks for", text)
+
     def test_prompt_forbids_executing_what_it_tells_a_subagent_to_read(self):
         """A page's scope routinely holds operational scripts. One real target
         repo's scripts/ drops databases and calls pg_terminate_backend, and the
