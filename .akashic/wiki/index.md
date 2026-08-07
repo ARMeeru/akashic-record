@@ -46,7 +46,7 @@ flowchart LR
   triage --> gen
 ```
 
-Sources: [DESIGN.md:47-56](../../DESIGN.md#L47-L56), [README.md:34-48](../../README.md#L34-L48)
+Sources: [DESIGN.md:47-56](../../DESIGN.md#L47-L56), [CLAUDE.md:46-48](../../CLAUDE.md#L46-L48), [README.md:32-48](../../README.md#L32-L48)
 
 ## What lands on disk
 
@@ -65,7 +65,7 @@ The tool writes one metadata file and a flat directory of pages into the *target
 
 A generated page is prose, an occasional Mermaid diagram, and a `Sources:` line under every section pointing at the exact lines backing the claim above it, like `Sources: [src/auth/jwt.ts:42-88](../../src/auth/jwt.ts#L42-L88)`. Line numbers are coordinates in the anchor commit, and `Sources:` stays in English regardless of the wiki's prose language so the parser stays locale-invariant.
 
-Sources: [DESIGN.md:58-108](../../DESIGN.md#L58-L108), [DESIGN.md:191-249](../../DESIGN.md#L191-L249), [CLAUDE.md:46-50](../../CLAUDE.md#L46-L50), [README.md:50-52](../../README.md#L50-L52)
+Sources: [DESIGN.md:58-108](../../DESIGN.md#L58-L108), [DESIGN.md:191-249](../../DESIGN.md#L191-L249), [CLAUDE.md:50](../../CLAUDE.md#L50-L50), [README.md:50-52](../../README.md#L50-L52)
 
 ## How a wiki gets made
 
@@ -94,7 +94,7 @@ Three things exist because of that gap, and `README.md` is explicit that none of
 
 Two caveats travel with these. A critic pass is one sample, not a measurement — rerunning on an unchanged catalog keeps finding things. And the one intervention `README.md` says reliably fixes a wrong page is correcting its `goal` and regenerating.
 
-Sources: [README.md:54-86](../../README.md#L54-L86), [DESIGN.md:732-736](../../DESIGN.md#L732-L736)
+Sources: [README.md:54-86](../../README.md#L54-L86), [DESIGN.md:741-751](../../DESIGN.md#L741-L751)
 
 ## Where to start reading
 
@@ -102,7 +102,7 @@ A reasonable first hour, in order:
 
 1. **`README.md`** for the shape of the thing, then its "What it does not do" section for the honest limits.
 2. **`DESIGN.md` §1 and §2** — positioning and the division of labor. Everything else in the design hangs off those two.
-3. **`CLAUDE.md`** — the command list and the invariants that shape most of the code, in condensed form.
+3. **`CLAUDE.md`** — the command list and the invariants that shape most of the code, in condensed form. That invariant list is where the design's accumulated field lessons are densest: page ids, hash semantics, the update buckets and what each one's remedy is, range-level staleness, and what `verify` warns about beyond citation resolution.
 4. **`akashic.py`**, guided by [Deterministic Core](./deterministic-core.md); then **`SKILL.md`**, guided by [Skill Orchestration](./skill-orchestration.md).
 
 `DESIGN.md` §10 records the order the project was actually built in — `akashic.py`, then `test_akashic.py`, then `SKILL.md`, then `README.md` — which is close enough to a reading order to be useful.
@@ -121,7 +121,7 @@ ln -s "$(pwd)" ~/.claude/skills/akashic-record
 
 The helper also runs standalone against any git repo with at least one commit — `python3 akashic.py -C <repo> scan | stale | verify | anchor | prompt <id> | remap | plan-check | plan-critic | audit prompt <id> | bless <id>`. Exit codes are 0 ok, 1 verification failure, 2 usage or precondition error. `CLAUDE.md` and `README.md` both carry the annotated list.
 
-Sources: [README.md:88-122](../../README.md#L88-L122), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [CLAUDE.md:52-70](../../CLAUDE.md#L52-L70), [DESIGN.md:883-892](../../DESIGN.md#L883-L892)
+Sources: [README.md:88-122](../../README.md#L88-L122), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [CLAUDE.md:52-71](../../CLAUDE.md#L52-L71), [DESIGN.md:898-904](../../DESIGN.md#L898-L904)
 
 ## Working in this repo
 
@@ -139,16 +139,16 @@ Fixtures are throwaway git repos built in `tempfile` (see `RepoCase`), and new d
 
 This repo carries its own generated wiki in `.akashic/`, so a change touching source files is expected to refresh it via `stale` → regenerate → `bless <id>` → `verify` → `anchor`, committed as `chore: refresh self-dogfooded wiki`. Never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, `ranges`, `blobs` or `goal_hash`, and never edit the derived `wiki/README.md`.
 
-Sources: [CLAUDE.md:18-26](../../CLAUDE.md#L18-L26), [CLAUDE.md:72-78](../../CLAUDE.md#L72-L78), [CONTRIBUTING.md:11-36](../../CONTRIBUTING.md#L11-L36)
+Sources: [CLAUDE.md:18-26](../../CLAUDE.md#L18-L26), [CLAUDE.md:73-79](../../CLAUDE.md#L73-L79), [CONTRIBUTING.md:11-36](../../CONTRIBUTING.md#L11-L36), [DESIGN.md:882-896](../../DESIGN.md#L882-L896)
 
 ## Security posture and license
 
-`SECURITY.md` scopes the project as a skill plus two stdlib-only Python scripts that read a target git repository and write into that repository's `.akashic/` directory. It states that `akashic.py` has no dependencies and makes no network calls, shelling out only to local git operations (`rev-parse`, `diff`, `ls-files`, `ls-tree`, `cat-file`, `show`, `status`), while `bin/akashic_loop.py` does reach the network by design — it runs `claude -p`, `git push`, and `gh pr create`. Two loop behaviours are named there as intentional rather than defects: executing `$AKASHIC_NOTIFY` through a shell, and opening PRs on repositories listed in your own config file.
+`SECURITY.md` scopes the project as a skill plus two stdlib-only Python scripts that read a target git repository and write generated wiki files into that repository's `.akashic/` directory. It states that `akashic.py` has no dependencies and makes no network calls, shelling out only to local git operations (`rev-parse`, `diff`, `ls-files`, `ls-tree`, `cat-file`, `show`, `status`), while `bin/akashic_loop.py` does reach the network by design — it runs `claude -p`, `git push`, and `gh pr create`. Two loop behaviours are named there as intentional rather than defects: executing the command in `$AKASHIC_NOTIFY` through a shell, and opening pull requests on repositories listed in your own config file.
 
-In scope for a report: path traversal out of the target repo root, writes escaping `.akashic/`, anything causing stale or human-edited content to be reported as fresh, and bypasses of the `verify` gate. Out of scope: the quality or accuracy of generated prose (that is a regular bug), vulnerabilities in the repositories the tool is run against, and Claude Code itself. One caveat is stated plainly because it reads like a control and is not one — the read-only mandate rendered into every subagent prompt, and the blind labelling in the claim audit, are instructions to a model rather than a sandbox. Vulnerabilities go through GitHub private vulnerability reporting, and only the latest commit on `develop` is supported; there are no tagged releases.
+In scope for a report: path traversal out of the target repo root, writes escaping `.akashic/`, anything causing stale or human-edited content to be reported as fresh, and bypasses of the `verify` gate. Out of scope: the quality or accuracy of generated prose (that is a regular bug), vulnerabilities in the repositories the tool is run against, and Claude Code itself. One caveat is stated plainly because it reads like a control and is not one — the read-only mandate rendered into every subagent prompt, and the blind labelling in the claim audit, are instructions to a model rather than a sandbox, since a subagent has whatever tools its harness grants it. Vulnerabilities go through GitHub private vulnerability reporting, and only the latest commit on `develop` is supported; there are no tagged releases.
 
 The project is MIT licensed, copyright 2026 ARMeeru.
 
 Sources: [SECURITY.md:3-38](../../SECURITY.md#L3-L38), [LICENSE:1-3](../../LICENSE#L1-L3)
 
-*Generated from commit `3e3329bb` on 2026-08-07.*
+*Generated from commit `9134229f` on 2026-08-07.*
