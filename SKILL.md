@@ -37,7 +37,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 
 | Command | Does | Output |
 |---|---|---|
-| `scan` | filtered file list with line counts (planner input) | `lines<TAB>path` |
+| `scan` | filtered file list with line counts (planner input) | a `# N files, M lines` header, then `lines<TAB>path` per file |
 | `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned/drifted` |
 | `stale --check` | same report, plus exit 1 when any bucket is non-empty | zero-token gate for a scheduled runner |
 | `verify` | check pages, citations, catalog invariants | errors, exit 1 if any |
@@ -90,6 +90,17 @@ no commits, too many files — relay these to the user verbatim; they are action
    pairs live in the same scope; build files (`Makefile`, `CMakeLists.txt`,
    `package.json`, `pyproject.toml`, …) belong to the index page's scope. A scope
    matching more than ~200 files means the page should be split.
+
+   **Glob semantics** (`scope`, `exclude`), because getting these wrong is silent:
+   patterns are `fnmatch`, not gitignore. `*` **crosses `/`**, so `src/lib/*` claims the
+   entire subtree beneath it and an interior `*` is not one path segment. A slash-free
+   pattern also matches the basename at any depth (`*.snap`), and a `**/` prefix also
+   matches at the repo root. `[` is **literal**, so a framework route path can be written
+   as it appears (`src/app/api/users/[id]/route.ts`) — fnmatch character classes are
+   consequently not supported. There is **no negation**: when two scopes unavoidably
+   overlap (`src/lib/services/users/*` also matches `notification_settings/`), the pages'
+   distinct `goal` fields are what separate them, not the scopes. Full normative text:
+   DESIGN.md §3.2.
 4. Generate every `planned` page with parallel subagents (all in one message), one per
    page. **Get each subagent's prompt by running `prompt <id>` — do not hand-write
    it.** The page contract below documents what that output looks like and why, but

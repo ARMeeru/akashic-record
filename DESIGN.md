@@ -237,7 +237,7 @@ CodeWiki's module-tree decomposition. So does this.
 
 ### Phase 0 — Scan (script)
 
-`akashic.py scan` → filtered file tree with per-file line counts (Qoder's
+`akashic.py scan` → a `# N files, M lines` header line followed by a filtered file tree with per-file line counts (Qoder's
 `optimized_catalog`, unencrypted). Source of truth is `git ls-files` (gitignore respected
 for free) minus binaries (null-byte sniff), lockfiles/vendored dirs (small built-in
 denylist), and `exclude` globs. Caps at `max_files` (default 5,000) with a clear error

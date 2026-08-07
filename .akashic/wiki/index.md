@@ -147,4 +147,4 @@ A reading order for the first hour:
 
 Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:523-532](../../DESIGN.md#L523-L532), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
 
-*Generated from commit `515e459` on 2026-08-07.*
+*Generated from commit `adadcf1` on 2026-08-07.*
