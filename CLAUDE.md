@@ -36,6 +36,7 @@ python3 akashic.py -C <repo> anchor        # verify, then record deps/hashes, st
 python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent prompt
 python3 akashic.py -C <repo> remap         # shift drifted citations to new line numbers (no LLM)
 python3 akashic.py -C <repo> plan-check    # pre-fan-out catalog shape checks (advisory, exit 0)
+python3 akashic.py -C <repo> plan-critic   # render the adversarial plan-review prompt
 python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --done also flips status
 ```
 
@@ -60,6 +61,7 @@ Invariants that shape most of the code:
 - **`.akashic/` paths are never staleness inputs or recorded dependencies** — the wiki must not depend on itself.
 - **Immediately after `anchor`, `stale` is empty** (tested). An unreachable anchor reports *all* pages stale rather than guessing — wasting a regen is acceptable; marking stale content fresh is not.
 - **`plan-check` gates the plan, advisory and always exit 0.** Shape-only checks before a fan-out: unmatched scope, a scope inside a sibling's, heavy pairwise overlap, the ~200-file split rule, empty goals, duplicate titles, plus per-page line totals. It expands scopes via `expand_scope`, so it measures the real fan-out input. Whether a `goal` is *true* is not its job.
+- **`plan-critic` renders the pre-fan-out review prompt; an LLM judges it.** One prompt for the whole catalog, because two of its four judgments (collision, redundant scope) are cross-page. It carries every goal, scope and expanded file list plus `plan-check`'s findings marked as already established. Templating only — the script never judges.
 - **Subagent prompts are rendered by `prompt <id>`, never hand-written** — mechanical templating from catalog + filesystem is what prevents the untracked-citation class of bug.
 
 ## Tests

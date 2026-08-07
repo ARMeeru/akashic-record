@@ -1199,6 +1199,95 @@ class TestPlanCheck(RepoCase):
         self.assertEqual(report["pages"][0]["files"], 1)
 
 
+class TestPlanCritic(RepoCase):
+    """The rendered critic prompt. Only the rendering is testable -- the
+    judgment is an LLM's, and a stubbed test would assert the stub. What is
+    covered is that everything a judge needs is actually in the prompt, since
+    an omission there is silent and produces a confident, uninformed review."""
+
+    def critic_repo(self, pages, tree=None):
+        repo = self.make_repo()
+        for rel, body in (tree or {"src/a.py": "one\n",
+                                   "src/b.py": "two\n"}).items():
+            self.write(repo, rel, body)
+        self.commit(repo)
+        self.catalog(repo, pages)
+        root = akashic.repo_root(repo)
+        return akashic.render_plan_critic(root, akashic.load_catalog(root))
+
+    def test_every_goal_and_scope_reaches_the_judge(self):
+        text = self.critic_repo([
+            self.page("one", scope=["src/a.py"], status="planned",
+                      goal="explain the widget pipeline"),
+            self.page("two", scope=["src/b.py"], status="planned",
+                      goal="explain the gadget cache")])
+        for needle in ("explain the widget pipeline", "explain the gadget cache",
+                       "src/a.py", "src/b.py"):
+            self.assertIn(needle, text)
+
+    def test_all_four_judgments_are_stated(self):
+        """The four questions are the issue's substance. If templating drops
+        one, the review silently stops covering that class."""
+        text = self.critic_repo(
+            [self.page("one", scope=["src/*"], status="planned")])
+        for needle in ("Substantiation", "Truthfulness", "Collision",
+                       "Redundant scope"):
+            self.assertIn(needle, text)
+
+    def test_the_scope_is_named_as_the_citable_boundary(self):
+        """Without this the judge grades goals on truth alone and misses the
+        commonest defect: a true claim about code the page may not cite."""
+        text = self.critic_repo(
+            [self.page("one", scope=["src/*"], status="planned")])
+        self.assertIn("ENTIRE set of files its subagent may cite", text)
+
+    def test_deterministic_findings_are_handed_over_not_re_derived(self):
+        text = self.critic_repo([
+            self.page("narrow", scope=["src/a.py"], status="planned"),
+            self.page("wide", scope=["src/*"], status="planned")])
+        self.assertIn("do not re-derive", text)
+        self.assertIn("subset", text)
+
+    def test_a_clean_plan_omits_the_findings_block_entirely(self):
+        text = self.critic_repo(
+            [self.page("one", scope=["src/a.py"], status="planned")])
+        self.assertNotIn("do not re-derive", text,
+                         "an empty findings block is boilerplate that teaches "
+                         "the judge to skim")
+
+    def test_an_unmatched_scope_is_called_out_inline(self):
+        text = self.critic_repo(
+            [self.page("ghost", scope=["docs/*"], status="planned")])
+        self.assertIn("scope matches no tracked file", text)
+
+    def test_long_file_lists_are_truncated_but_never_silently(self):
+        n = akashic.CRITIC_FILE_SAMPLE + 5
+        tree = {f"src/f{i:03d}.py": "x\n" for i in range(n)}
+        text = self.critic_repo(
+            [self.page("big", scope=["src/*"], status="planned")], tree=tree)
+        self.assertIn(f"and {n - akashic.CRITIC_FILE_SAMPLE} more", text)
+        self.assertIn("prompt big", text, "must say how to get the full list")
+        self.assertIn(f"files: {n}", text, "the true count is still stated")
+
+    def test_the_read_only_mandate_is_rendered(self):
+        """A target repo's scope routinely includes operational scripts, and a
+        reviewer that starts running things is worse than no reviewer."""
+        text = self.critic_repo(
+            [self.page("one", scope=["src/*"], status="planned")])
+        self.assertIn("READ ONLY", text)
+        self.assertIn("do not edit the catalog", text)
+
+    def test_an_empty_catalog_fails_rather_than_rendering_nothing(self):
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "one\n")
+        self.commit(repo)
+        self.catalog(repo, [])
+        root = akashic.repo_root(repo)
+        with self.assertRaises(SystemExit) as ctx:
+            akashic.render_plan_critic(root, akashic.load_catalog(root))
+        self.assertEqual(ctx.exception.code, 2)
+
+
 class TestLoop(RepoCase):
     """The runner's decision layer. The LLM invocation itself is not covered:
     it shells out to `claude -p`, and a test that stubbed it would only assert

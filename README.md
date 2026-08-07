@@ -80,6 +80,7 @@ python3 akashic.py -C <repo> anchor        # record deps/hashes/blobs, stamp anc
 python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent prompt
 python3 akashic.py -C <repo> remap         # shift drifted citations to new line numbers (no LLM)
 python3 akashic.py -C <repo> plan-check    # catalog shape checks before a fan-out
+python3 akashic.py -C <repo> plan-critic   # render the adversarial plan-review prompt
 python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating a page
 ```
 

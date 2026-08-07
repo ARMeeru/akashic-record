@@ -12,7 +12,7 @@
       "id": "index",
       "title": "Project Overview",
       "parent": null,
-      "goal": "Orient a new developer in their first hour: what akashic-record is, the three artifacts (design doc, skill, deterministic core), the division of labor between LLM and script, and where to start reading.",
+      "goal": "Orient a new developer in their first hour: what akashic-record is, the four artifacts (design doc, skill, deterministic core, maintenance loop), the division of labor between LLM and script, and where to start reading.",
       "scope": [
         "README.md",
         "DESIGN.md",
@@ -251,7 +251,7 @@
       "id": "deterministic-core",
       "title": "Deterministic Core",
       "parent": null,
-      "goal": "Document akashic.py command by command: scan filtering, the stale bucket semantics and self-dependency exclusion, verify's citation gate, anchor's hash-preservation rule, and the invariants the test suite proves.",
+      "goal": "Document akashic.py command by command -- scan filtering, the stale bucket semantics and self-dependency exclusion, verify's citation gate and its three warning classes, anchor's hash-preservation rule, bless, remap, plan-check and plan-critic, and prompt rendering -- plus the invariants the test suite proves.",
       "scope": [
         "akashic.py",
         "test_akashic.py"
@@ -680,7 +680,7 @@
       "id": "skill-orchestration",
       "title": "Skill Orchestration",
       "parent": null,
-      "goal": "Explain how the Claude Code skill drives the pipeline: the generate/update/status flows, the page contract subagents receive, the hard rules (script authority, edit protection, cite-or-omit, hash-null bless signal), and how agents consume the wiki.",
+      "goal": "Explain how the Claude Code skill drives the pipeline: the generate/update/status flows, the plan-check and plan-critic gates that run before a fan-out, the page contract subagents receive, the four hard rules (script authority including the hash-null bless signal, edit protection, cite-or-omit, always anchored), and how agents consume the wiki.",
       "scope": [
         "SKILL.md"
       ],

@@ -45,6 +45,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | `prompt <id>` | render the exact subagent prompt for one catalog page | text — dispatch it verbatim |
 | `remap` | shift citations whose lines moved without changing; no LLM | summary |
 | `plan-check` | shape checks on the catalog before a fan-out | JSON + warnings; always exit 0 |
+| `plan-critic` | render the adversarial plan-review prompt for the whole catalog | text — dispatch it verbatim |
 | `bless <id>...` | mark pages as tool-written after regenerating them (`hash` → null); `--done` also flips `status` | summary |
 
 Exit codes: 0 ok, 1 verification failure, 2 precondition/usage error (e.g. no git repo,
@@ -110,6 +111,15 @@ no commits, too many files — relay these to the user verbatim; they are action
    read the same bulk and write the same prose. It is advisory and never blocks — some
    overlap is legitimate — so the judgment is yours; what is not acceptable is not
    looking. Its output is also what a plan-approval checkpoint should show a human.
+   Then dispatch `plan-critic` to **one subagent, verbatim**, and act on what it returns
+   before generating anything. `plan-check` answers the shape questions; this one answers
+   the questions that need reading the code — whether a goal promises something the
+   repo does not contain, whether what it promises is even inside its own scope, and
+   whether two goals claim the same subject. It is the only check that can catch those:
+   `verify` proves a citation resolves, never that a page wrote what it was asked to, and
+   cite-or-omit means an under-scoped page does not fail, it quietly says less. One
+   adversarial pass over the whole catalog costs a fraction of one page's generation.
+   Fix the goals and scopes it names, re-run both checks, and only then fan out.
 5. Generate every `planned` page with parallel subagents (all in one message), one per
    page. **Get each subagent's prompt by running `prompt <id>` — do not hand-write
    it.** The page contract below documents what that output looks like and why, but
@@ -185,7 +195,8 @@ no commits, too many files — relay these to the user verbatim; they are action
      entries (never remove or rewrite entries marked `frozen: true`), run `plan-check`
      and read it before dispatching (a new entry is a new fan-out, and a scope bolted on
      next to existing ones is exactly where an unreachable or duplicated scope appears),
-     then generate them; otherwise mention and move on.
+     then `plan-critic` — a goal written for a module nobody has read yet is exactly the
+     goal written from filenames — then generate them; otherwise mention and move on.
 3. `verify` → fix → `anchor`.
 4. Report per page: what changed, what was done — phrased so it can serve as the body
    of the wiki commit message.
