@@ -8,19 +8,20 @@ The loop's economics rest on one property: asking "does this repo need work?" is
 
 That distinction is the whole reason a schedule is reasonable rather than extravagant. A quiet fleet can be polled as often as you like, because the polling never reaches a model at all.
 
-Sources: [bin/akashic_loop.py:1-27](../../bin/akashic_loop.py#L1-L27), [bin/akashic_loop.py:92-104](../../bin/akashic_loop.py#L92-L104)
+Sources: [bin/akashic_loop.py:1-27](../../bin/akashic_loop.py#L1-L27), [bin/akashic_loop.py:98-110](../../bin/akashic_loop.py#L98-L110)
 
 ## Four verdicts, and the one that never reaches an LLM
 
-`classify` reduces a `stale` report to one of three constants, which `process` then acts on:
+`classify` reduces a `stale` report to one of four constants, which `process` then acts on:
 
 - **clean** — nothing in any bucket. The repo is skipped and costs nothing.
 - **needs-update** — anything in `stale`, `orphaned`, `uncovered`, `missing` or `planned`. The repo goes through the update flow.
+- **remap-only** — the sole finding is `drifted`: cited lines moved without changing. That is arithmetic, so `remap` fixes it and no model is ever invoked. The resulting PR contains no generated prose at all, which is what makes it the one safe candidate for automatic merging.
 - **review-only** — `edited` is the *sole* finding. This is the interesting case: a human wrote that page, and hard rule 2 says never overwrite detected human work, so regenerating would be exactly the wrong response. The loop notifies the owner and returns 1 rather than handing the repo to a model.
 
 A repo with `edited` *alongside* real work is still classified `needs-update`, because the other buckets genuinely need doing. Skipping the edited pages themselves is the update flow's job, not the classifier's — the loop does not try to re-implement a rule the skill already enforces.
 
-Sources: [bin/akashic_loop.py:34-36](../../bin/akashic_loop.py#L34-L36), [bin/akashic_loop.py:49-66](../../bin/akashic_loop.py#L49-L66), [bin/akashic_loop.py:146-169](../../bin/akashic_loop.py#L146-L169)
+Sources: [bin/akashic_loop.py:34-37](../../bin/akashic_loop.py#L34-L37), [bin/akashic_loop.py:50-71](../../bin/akashic_loop.py#L50-L71), [bin/akashic_loop.py:174-204](../../bin/akashic_loop.py#L174-L204)
 
 ## Pull request, not commit
 
@@ -30,7 +31,7 @@ Before it will open that PR, three things must hold: the update flow itself must
 
 The reasoning behind the PR is that this output is produced while nobody is watching. A pull request is the cheapest possible place to put a human back in the path without making the loop wait for one.
 
-Sources: [bin/akashic_loop.py:107-114](../../bin/akashic_loop.py#L107-L114), [bin/akashic_loop.py:116-143](../../bin/akashic_loop.py#L116-L143)
+Sources: [bin/akashic_loop.py:113-120](../../bin/akashic_loop.py#L113-L120), [bin/akashic_loop.py:144-171](../../bin/akashic_loop.py#L144-L171)
 
 ## Never exit 0 on failure
 
@@ -47,13 +48,13 @@ flowchart TD
     U -- ok --> PR[open PR, exit 0]
 ```
 
-Sources: [bin/akashic_loop.py:146-169](../../bin/akashic_loop.py#L146-L169)
+Sources: [bin/akashic_loop.py:174-204](../../bin/akashic_loop.py#L174-L204)
 
 Across a fleet the worst outcome wins, so one broken repo cannot be hidden by nine healthy ones. A missing or empty repo list is itself a failure rather than a quiet no-op, because a loop configured into silence looks identical to a loop with nothing to do. The stated reason is that a set-and-forget loop failing silently fossilizes the wiki, which is worse than having no loop at all: you would go on believing the docs were current.
 
 Failures reach the owner through `notify`, which always writes to stderr — enough for a scheduler that mails output — and additionally pipes the message to whatever command `$AKASHIC_NOTIFY` names. A notification hook that itself fails is caught and reported rather than being allowed to take down the run.
 
-Sources: [bin/akashic_loop.py:78-89](../../bin/akashic_loop.py#L78-L89), [bin/akashic_loop.py:171-196](../../bin/akashic_loop.py#L171-L196)
+Sources: [bin/akashic_loop.py:84-95](../../bin/akashic_loop.py#L84-L95), [bin/akashic_loop.py:206-231](../../bin/akashic_loop.py#L206-L231)
 
 ## Configuration
 
@@ -61,6 +62,6 @@ The fleet is a plain text file: one repository path per line, `#` comments and b
 
 `--dry-run` reports what each repo would need and spends nothing, which is also the safe way to confirm a schedule is pointed at the right paths.
 
-Sources: [bin/akashic_loop.py:29-32](../../bin/akashic_loop.py#L29-L32), [bin/akashic_loop.py:39-46](../../bin/akashic_loop.py#L39-L46), [bin/akashic_loop.py:68-75](../../bin/akashic_loop.py#L68-L75)
+Sources: [bin/akashic_loop.py:29-32](../../bin/akashic_loop.py#L29-L32), [bin/akashic_loop.py:40-47](../../bin/akashic_loop.py#L40-L47), [bin/akashic_loop.py:74-81](../../bin/akashic_loop.py#L74-L81)
 
-*Generated from commit `700684c` on 2026-08-07.*
+*Generated from commit `bf1c15e` on 2026-08-07.*

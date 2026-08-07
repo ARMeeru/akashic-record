@@ -2,7 +2,7 @@
 
 `akashic.py` is the half of akashic-record that must never be hallucinated: file scanning, the diff-to-stale-page mapping, citation verification, hash/anchor stamping, and deterministic rendering of the exact subagent prompt used to generate a page. It never calls an LLM, and the LLM side (catalog planning and page prose, described in [Skill Orchestration](./skill-orchestration.md)) never computes a hash, diff, line range, or prompt text. The script is stdlib-only Python 3.9+, exposes six subcommands — `scan`, `stale`, `verify`, `anchor`, `prompt`, `bless` — behind a `-C` directory flag, requires a git repository with at least one commit, and exits 0 on success, 1 on verification failures, 2 on usage or precondition errors. How these commands fit into the overall system is covered in [Project Overview](./index.md).
 
-Sources: [akashic.py:1-29](../../akashic.py#L1-L29), [akashic.py:78-87](../../akashic.py#L78-L87), [akashic.py:1082-1122](../../akashic.py#L1082-L1122)
+Sources: [akashic.py:1-29](../../akashic.py#L1-L29), [akashic.py:78-87](../../akashic.py#L78-L87), [akashic.py:1260-1303](../../akashic.py#L1260-L1303)
 
 ## scan — the planner's filtered view
 
@@ -34,11 +34,13 @@ Routing all consumers through the single function is what makes that one fix rea
 - **the orphaned-rescue clause** — the check that keeps a rewritten module classified stale rather than `orphaned` saw no surviving in-scope file, and the skill's remediation for `orphaned` deletes the page and its catalog entry;
 - **coverage and scope warnings** — `uncovered` and `verify`'s out-of-scope citation warning both take the same path.
 
-Sources: [akashic.py:151-163](../../akashic.py#L151-L163), [akashic.py:166-182](../../akashic.py#L166-L182), [akashic.py:185-196](../../akashic.py#L185-L196), [akashic.py:483-487](../../akashic.py#L483-L487), [akashic.py:767-782](../../akashic.py#L767-L782), [akashic.py:784-792](../../akashic.py#L784-L792), [akashic.py:887-889](../../akashic.py#L887-L889), [akashic.py:990-1003](../../akashic.py#L990-L1003)
+Sources: [akashic.py:151-163](../../akashic.py#L151-L163), [akashic.py:166-182](../../akashic.py#L166-L182), [akashic.py:185-196](../../akashic.py#L185-L196), [akashic.py:483-487](../../akashic.py#L483-L487), [akashic.py:808-823](../../akashic.py#L808-L823), [akashic.py:835-843](../../akashic.py#L835-L843), [akashic.py:940-942](../../akashic.py#L940-L942), [akashic.py:1168-1181](../../akashic.py#L1168-L1181)
 
 ## stale — bucket semantics
 
 `stale` is read-only: it prints a JSON report with `anchor`, `head`, `anchor_reachable`, `anchor_state`, `dirty`, and six page buckets — `stale`, `edited`, `orphaned`, `uncovered`, `missing`, `planned`. Only the first five concern pages with `status: "done"`; `planned` is the exception, and exists because of what the others cannot see.
+
+**Drift, and `remap`.** Range-level staleness buys precision at a price: a change *above* a page's cited lines no longer marks it stale, yet still moves the code it points at. The recorded numbers stay in bounds, so `verify` cannot see it — the citation is silently wrong. `stale` therefore reports those pages in a `drifted` bucket, and `remap` repairs them as arithmetic: `shift_at` sums the deltas of hunks above each span, `page_drift` produces the new spans and any renamed path, and `remap_body` rewrites both the destination fragment and the human-readable `path:start-end` text, because a reader seeing the two disagree cannot tell which lied. Fenced blocks are skipped (an example citation is documentation, not a dependency) and `edited` pages are skipped entirely (hard rule 2 covers line numbers too). Each page is blessed in the same step as its rewrite, since a rewritten body under its old hash would read as a human edit.
 
 **Range-level staleness.** For a modified file the page cites *with line numbers*, `stale` asks the sharper question: did the change reach the lines this page leans on? `anchor` records those spans in `ranges`, `git diff -U0` hunks are already in anchor coordinates, and `touches_page` intersects them as integer math. A page cited at lines 10-40 no longer regenerates because line 900 changed. A zero-length hunk is an insertion after old line N and counts only when `s <= N < e`, so an insertion just past the last cited line leaves the page describing what it always described. Everything the intersection cannot speak about stays file-level and stale: uncited scope files, fragment-less citations, pure renames (no hunks under `-M`), deletions, and the blob fallback. It only ever removes a false positive.
 
@@ -54,7 +56,7 @@ Two buckets are computed before any diff. `missing` lists done pages whose wiki 
 
 With a reachable anchor, the tool parses `git diff --name-status -M -z anchor..HEAD` into modified/added/deleted/rename sets. Renames land on both sides: both endpoints count as changed (citations to the old path dangle), and the new name counts as an addition for scope matching.
 
-Sources: [akashic.py:226-242](../../akashic.py#L226-L242), [akashic.py:530-554](../../akashic.py#L530-L554), [akashic.py:671-793](../../akashic.py#L671-L793), [akashic.py:797-819](../../akashic.py#L797-L819)
+Sources: [akashic.py:226-242](../../akashic.py#L226-L242), [akashic.py:530-554](../../akashic.py#L530-L554), [akashic.py:712-844](../../akashic.py#L712-L844), [akashic.py:850-872](../../akashic.py#L850-L872)
 
 A done page is then bucketed:
 
@@ -70,7 +72,7 @@ flowchart TD
     H -- no --> F[fresh - not reported]
 ```
 
-Sources: [akashic.py:721-782](../../akashic.py#L721-L782)
+Sources: [akashic.py:762-833](../../akashic.py#L762-L833)
 
 The orphaned condition is deliberately narrow: a page is orphaned only when everything it documented is deleted *and* nothing in the current HEAD tree matches its scope — a rewritten module is stale, not orphaned. Because that second half is a `matches_any` call, its correctness depends on the glob chokepoint above.
 
@@ -78,7 +80,7 @@ The orphaned condition is deliberately narrow: a page is orphaned only when ever
 
 `uncovered` lists added files that no page claims. `files` entries are exact paths — a recorded root `Makefile` must not shadow a new nested `Makefile` — while `scope` entries are globs; noise (the same filter as `scan`, including catalog excludes) and binaries are dropped.
 
-Sources: [akashic.py:756-765](../../akashic.py#L756-L765), [akashic.py:767-782](../../akashic.py#L767-L782), [akashic.py:784-792](../../akashic.py#L784-L792)
+Sources: [akashic.py:797-806](../../akashic.py#L797-L806), [akashic.py:808-823](../../akashic.py#L808-L823), [akashic.py:835-843](../../akashic.py#L835-L843)
 
 ## verify — the citation gate
 
@@ -112,7 +114,7 @@ Finally it:
 - saves the catalog atomically via a temp-file rename (`save_catalog`);
 - warns if the working tree is dirty (the wiki may describe uncommitted code; the recommended flow is commit, then anchor).
 
-Sources: [akashic.py:143-148](../../akashic.py#L143-L148), [akashic.py:823-845](../../akashic.py#L823-L845), [akashic.py:848-922](../../akashic.py#L848-L922), [akashic.py:924-927](../../akashic.py#L924-L927)
+Sources: [akashic.py:143-148](../../akashic.py#L143-L148), [akashic.py:876-898](../../akashic.py#L876-L898), [akashic.py:901-975](../../akashic.py#L901-L975), [akashic.py:977-980](../../akashic.py#L977-L980)
 
 ## bless — the last metadata mutation taken back from the LLM
 
@@ -122,7 +124,7 @@ That carve-out was not merely inelegant, it could lose work. Hand-editing is two
 
 `bless_pages` validates every id and every page file before mutating anything: an id absent from the catalog and a page whose `wiki/<id>.md` was never written both die with exit 2, leaving the catalog untouched. Those are the two ways the hand-edit went wrong in practice — a typo'd id, and blessing a page a subagent never actually produced.
 
-Sources: [akashic.py:932-963](../../akashic.py#L932-L963), [akashic.py:966-972](../../akashic.py#L966-L972), [akashic.py:1103-1117](../../akashic.py#L1103-L1117)
+Sources: [akashic.py:985-1016](../../akashic.py#L985-L1016), [akashic.py:1019-1025](../../akashic.py#L1019-L1025), [akashic.py:1281-1295](../../akashic.py#L1281-L1295)
 
 ## prompt — deterministic subagent-prompt rendering
 
@@ -134,11 +136,11 @@ The citable file list is `expand_scope`: tracked files matching the page's `scop
 
 `cmd_prompt` requires a page id argument and dies with exit 2 if the id is not in the catalog, via the same `die()` path every other precondition failure uses.
 
-Sources: [akashic.py:984-988](../../akashic.py#L984-L988), [akashic.py:990-1003](../../akashic.py#L990-L1003), [akashic.py:1005-1008](../../akashic.py#L1005-L1008), [akashic.py:1011-1070](../../akashic.py#L1011-L1070), [akashic.py:1073-1077](../../akashic.py#L1073-L1077)
+Sources: [akashic.py:1162-1166](../../akashic.py#L1162-L1166), [akashic.py:1168-1181](../../akashic.py#L1168-L1181), [akashic.py:1183-1186](../../akashic.py#L1183-L1186), [akashic.py:1189-1248](../../akashic.py#L1189-L1248), [akashic.py:1251-1255](../../akashic.py#L1251-L1255)
 
 ## What the test suite proves
 
-`test_akashic.py` is 55 stdlib `unittest` tests over throwaway git-repo fixtures, one check per deterministic component. The invariants it pins down:
+`test_akashic.py` is 61 stdlib `unittest` tests over throwaway git-repo fixtures, one check per deterministic component. The invariants it pins down:
 
 - **Scan filtering**: a source file survives while a binary, a lockfile, an excluded glob, and `.akashic/` itself are all dropped.
 - **The canonical incremental mapping**: edit `f1`, delete `f2`, add `f3` yields exactly `{stale: [a], orphaned: [b], uncovered: [f3]}` with empty `edited`/`missing`.
@@ -151,6 +153,7 @@ Sources: [akashic.py:984-988](../../akashic.py#L984-L988), [akashic.py:990-1003]
 - **The post-anchor invariant**: after `anchor` and committing its artifacts, all five stale buckets are empty — with `README.md` deliberately in a page's scope to prove the wiki's own derived TOC never basename-matches into a self-dependency — and a manual edit afterwards flips exactly the `edited` bucket. `anchor` refuses (exit 1) on verification failure.
 - **Edit protection survives re-anchoring**: a second anchor over a human-edited page keeps the original tool hash; only an explicit `hash: null` bless clears the `edited` state.
 - **The loop's decision layer**: repo-list parsing, all three verdicts (including that an `edited`-only repo is never handed to an LLM), and the gate run against real fixture repos. The `claude -p` call is deliberately uncovered, since a stubbed test would only assert the stub.
+- **Drift and remap**: a shift above the cited lines is reported as `drifted` rather than `stale`, `remap` moves both halves of the citation to the right numbers, a fenced example is left untouched, and a hand-edited page is never rewritten.
 - **Range intersection both ways**: a change outside the cited span leaves the page fresh, a change inside stales it, an append at end of file does not stale a cite-to-end page (the phantom-line clamp), a pure rename stays stale, and an uncited in-scope file keeps file-level staleness.
 - **The blob fallback both ways**: with the anchor commit replaced by a bogus sha, unchanged content reports no stale pages, a changed dependency still reports one, a new in-scope file still reports one, and a page with no recorded blobs is never trusted.
 - **The completeness hole**: a planned page with no file lands in `planned` and not in `missing`, and `--check` exits 0 on a clean tree but 1 once a dependency changes.
@@ -159,6 +162,6 @@ Sources: [akashic.py:984-988](../../akashic.py#L984-L988), [akashic.py:990-1003]
 - **Coverage semantics**: exact `files` entries do not shadow same-named files at other depths in the `uncovered` report, and noise is filtered there too.
 - **`prompt` rendering**: the citable list holds only tracked, in-scope files and omits an out-of-scope sibling file; scope expansion applies the scan filters, so a `src/**` scope offers `src/app.py` but never `bundle.min.js`, `package-lock.json`, an excluded `.snap`, or a binary; siblings and the page `goal` appear verbatim; an untracked `CLAUDE.md` is named alongside a "NOT tracked by git" warning, and that paragraph is absent when no such doc exists; an unknown page id exits 2.
 
-Sources: [test_akashic.py:2-7](../../test_akashic.py#L2-L7), [test_akashic.py:29-68](../../test_akashic.py#L29-L68), [test_akashic.py:71-86](../../test_akashic.py#L71-L86), [test_akashic.py:89-147](../../test_akashic.py#L89-L147), [test_akashic.py:339-402](../../test_akashic.py#L339-L402), [test_akashic.py:405-455](../../test_akashic.py#L405-L455), [test_akashic.py:458-486](../../test_akashic.py#L458-L486), [test_akashic.py:522-560](../../test_akashic.py#L522-L560), [test_akashic.py:562-575](../../test_akashic.py#L562-L575), [test_akashic.py:577-636](../../test_akashic.py#L577-L636), [test_akashic.py:638-654](../../test_akashic.py#L638-L654), [test_akashic.py:656-686](../../test_akashic.py#L656-L686), [test_akashic.py:688-712](../../test_akashic.py#L688-L712), [test_akashic.py:714-732](../../test_akashic.py#L714-L732), [test_akashic.py:743-758](../../test_akashic.py#L743-L758), [test_akashic.py:760-827](../../test_akashic.py#L760-L827), [test_akashic.py:829-853](../../test_akashic.py#L829-L853)
+Sources: [test_akashic.py:2-7](../../test_akashic.py#L2-L7), [test_akashic.py:29-68](../../test_akashic.py#L29-L68), [test_akashic.py:71-86](../../test_akashic.py#L71-L86), [test_akashic.py:89-147](../../test_akashic.py#L89-L147), [test_akashic.py:428-491](../../test_akashic.py#L428-L491), [test_akashic.py:494-544](../../test_akashic.py#L494-L544), [test_akashic.py:547-575](../../test_akashic.py#L547-L575), [test_akashic.py:611-649](../../test_akashic.py#L611-L649), [test_akashic.py:651-664](../../test_akashic.py#L651-L664), [test_akashic.py:666-725](../../test_akashic.py#L666-L725), [test_akashic.py:727-743](../../test_akashic.py#L727-L743), [test_akashic.py:745-775](../../test_akashic.py#L745-L775), [test_akashic.py:777-801](../../test_akashic.py#L777-L801), [test_akashic.py:803-821](../../test_akashic.py#L803-L821), [test_akashic.py:832-847](../../test_akashic.py#L832-L847), [test_akashic.py:849-916](../../test_akashic.py#L849-L916), [test_akashic.py:918-942](../../test_akashic.py#L918-L942)
 
-*Generated from commit `9913695` on 2026-08-07.*
+*Generated from commit `bf1c15e` on 2026-08-07.*

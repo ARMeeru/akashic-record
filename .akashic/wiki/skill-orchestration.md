@@ -21,9 +21,9 @@ Sources: [SKILL.md:13-30](../../SKILL.md#L13-L30)
 
 ## The helper script
 
-All deterministic operations go through the helper, invoked as `python3 "<skill's base directory>/akashic.py" -C <target-repo> <command>`. Six commands exist: `scan` (filtered file list with line counts, the planner's input, as `lines<TAB>path`), `stale` (JSON staleness report with `stale/edited/orphaned/uncovered/missing` buckets), `verify` (checks pages, citations, and catalog invariants, exiting 1 on any error), `anchor` (records deps and hashes, stamps the anchor commit, renders the TOC), `prompt <id>` (renders the exact subagent prompt for one catalog page, as text meant to be dispatched verbatim), and `bless <id>...` (marks pages as tool-written by nulling their hash, with `--done` also flipping `status`). `stale` also takes `--check`, which repeats the report and exits 1 when any bucket is non-empty — the zero-token gate a scheduled runner polls with. Exit codes are 0 for ok, 1 for verification failure, and 2 for precondition or usage errors (no git repo, no commits, too many files) — precondition errors are relayed to the user verbatim because they are actionable. The internals of these commands are covered in [Deterministic Core](./deterministic-core.md).
+All deterministic operations go through the helper, invoked as `python3 "<skill's base directory>/akashic.py" -C <target-repo> <command>`. Seven commands exist: `scan` (filtered file list with line counts, the planner's input, as `lines<TAB>path`), `stale` (JSON staleness report with `stale/edited/orphaned/uncovered/missing` buckets), `verify` (checks pages, citations, and catalog invariants, exiting 1 on any error), `anchor` (records deps and hashes, stamps the anchor commit, renders the TOC), `prompt <id>` (renders the exact subagent prompt for one catalog page, as text meant to be dispatched verbatim), and `bless <id>...` (marks pages as tool-written by nulling their hash, with `--done` also flipping `status`). `remap` shifts citations whose lines moved without their content changing, with no LLM involved. `stale` also takes `--check`, which repeats the report and exits 1 when any bucket is non-empty — the zero-token gate a scheduled runner polls with. Exit codes are 0 for ok, 1 for verification failure, and 2 for precondition or usage errors (no git repo, no commits, too many files) — precondition errors are relayed to the user verbatim because they are actionable. The internals of these commands are covered in [Deterministic Core](./deterministic-core.md).
 
-Sources: [SKILL.md:32-49](../../SKILL.md#L32-L49)
+Sources: [SKILL.md:32-50](../../SKILL.md#L32-L50)
 
 ## Flow: generate (first run)
 
@@ -60,7 +60,7 @@ sequenceDiagram
     A-->>O: deps and hashes recorded, TOC rendered
 ```
 
-Sources: [SKILL.md:51-113](../../SKILL.md#L51-L113)
+Sources: [SKILL.md:52-111](../../SKILL.md#L52-L111)
 
 ## Page contract
 
@@ -70,13 +70,14 @@ The contract states a hard rule of its own: **only cite files from the given lis
 
 Diagrams are plain Mermaid (no style directives), used only where they genuinely clarify, each with a `Sources:` line directly beneath. Sibling pages are cross-referenced as inline markdown links pointing at a sibling page's `<id>.md` file, cite-or-omit applies ("not documented here" beats invention), and the last line stamps the generating commit and date. Prose language is configurable, but structural tokens like `Sources:` and heading syntax stay as specified regardless of language.
 
-Sources: [SKILL.md:115-143](../../SKILL.md#L115-L143)
+Sources: [SKILL.md:113-141](../../SKILL.md#L113-L141)
 
 ## Flow: update
 
 An update begins with `stale`. If the report says `anchor_reachable` is false, `anchor_state` names which of the two causes it is — `never_anchored`, a first run that simply needs anchoring, or `anchor_unreachable`, a commit missing from this clone (usually a shallow clone, or an anchor stamped on a commit a squash-merge discarded) — and the user is told everything regenerates, because staleness is never guessed. Then each bucket is handled:
 
 - `stale` — regenerate via the page contract, with an added instruction naming the changed dependencies and demanding a rewrite to match current code rather than an appended changelog; `bless <id>` is run on each regenerated page (the bless signal of hard rule 1).
+- `drifted` — run `remap`, never regenerate: the cited lines moved but their content did not, so the repair is arithmetic and costs nothing. Spending a subagent here would retype prose that was already correct.
 - `missing` — regenerate from the catalog entry.
 - `edited` — never touched (hard rule 2); listed for the user. A page in both `stale` and `edited` is reported as "stale but human-edited — needs manual review".
 - `orphaned` — delete the wiki file and its catalog entry and report; an orphaned page that is also `edited` is never deleted.
@@ -84,18 +85,18 @@ An update begins with `stale`. If the report says `anchor_reachable` is false, `
 
 The flow closes with `verify` → fix → `anchor`, and a per-page report of what changed and what was done, phrased so it can serve as the body of the wiki commit message.
 
-Sources: [SKILL.md:145-164](../../SKILL.md#L145-L164)
+Sources: [SKILL.md:143-169](../../SKILL.md#L143-L169)
 
 ## Flow: status
 
 Status is read-only: run `stale`, summarize the buckets in plain language, and change nothing.
 
-Sources: [SKILL.md:166-168](../../SKILL.md#L166-L168)
+Sources: [SKILL.md:171-173](../../SKILL.md#L171-L173)
 
 ## How agents consume the wiki
 
 For architecture or "how does X work" questions in a repo with `.akashic/wiki/`, an agent reads `wiki/README.md` (the TOC), opens the relevant pages, and verifies load-bearing claims against the cited lines — the wiki is a map, not the territory, and each page's footer says which commit it describes. Before editing a source file, the agent greps `catalog.json` for that path in `files`/`scope` and reads the pages documenting it, gaining pre-digested context for the change.
 
-Sources: [SKILL.md:170-177](../../SKILL.md#L170-L177)
+Sources: [SKILL.md:175-182](../../SKILL.md#L175-L182)
 
-*Generated from commit `ce748ac1` on 2026-08-07.*
+*Generated from commit `bf1c15e` on 2026-08-07.*
