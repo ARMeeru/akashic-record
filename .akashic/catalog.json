@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "9134229fce9c00b1f4a4304980e4bc3fb1e82c7d",
-  "generated": "2026-08-07T17:18:26Z",
+  "anchor": "b9f3e03613f2178e1409e8216490272350741864",
+  "generated": "2026-08-07T17:27:35Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,12 +30,12 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:bb334a964a0e98b3c758d8e72745f9add2d05cd21259ca28a13ab534afe14730",
+      "hash": "sha256:f8ab6f6b32062d79d0d989d2bed56f780afef08b76b4a10e4621c5a7635bd1cb",
       "frozen": false,
       "blobs": {
         "CLAUDE.md": "e16a97534d367fe301de327533f855a035b71244",
         "CONTRIBUTING.md": "8f6a65bc2499896268e5f94bde0fdca0d003eea0",
-        "DESIGN.md": "6684d6515d8340f26dd02c41b175bf76d7ef3b4b",
+        "DESIGN.md": "d44f76334cca4f289b2de44b9b14c1ba20bd7f16",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
         "README.md": "3c49eeee62c43d043c0addd851d42d9e479a7e7c",
         "SECURITY.md": "11afb477e48693ee760c6f4225ea73066e50efa7"
@@ -111,16 +111,16 @@
             256
           ],
           [
-            741,
-            751
+            758,
+            768
           ],
           [
-            882,
-            896
+            899,
+            913
           ],
           [
-            898,
-            904
+            915,
+            921
           ]
         ],
         "LICENSE": [
@@ -595,10 +595,10 @@
         "SKILL.md"
       ],
       "status": "done",
-      "hash": "sha256:73dcaef7ec26ceffd74a4b488c98f3be9e6bce425cf1569a30cc33c966668366",
+      "hash": "sha256:7a62219c73eb129874ce58156aeac48eb7f1c8333a4e09450b999cf8fdb34367",
       "frozen": false,
       "blobs": {
-        "SKILL.md": "da449df234c8ef85eb34a75c7004359eff1cef74"
+        "SKILL.md": "e94e0a1cc795bc52fae4ec9abeee17cffb6ab42b"
       },
       "ranges": {
         "SKILL.md": [
@@ -616,39 +616,39 @@
           ],
           [
             57,
-            108
+            134
           ],
           [
             57,
-            147
+            173
           ],
           [
-            109,
-            128
+            135,
+            154
           ],
           [
-            129,
-            147
+            155,
+            173
           ],
           [
-            149,
-            177
+            175,
+            203
           ],
           [
-            179,
-            239
-          ],
-          [
-            241,
-            244
-          ],
-          [
-            263,
+            205,
             265
           ],
           [
             267,
-            274
+            269
+          ],
+          [
+            289,
+            291
+          ],
+          [
+            293,
+            300
           ]
         ]
       },
