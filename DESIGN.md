@@ -49,7 +49,7 @@ Two audiences, one artifact:
 | Who | Does | Never does |
 |---|---|---|
 | LLM (skill-orchestrated) | overview, catalog planning, page prose, update triage | compute a hash, diff, or line range |
-| `akashic.py` (stdlib only: `json subprocess hashlib pathlib re fnmatch`) | `scan`, `stale`, `verify`, `anchor` | call an LLM |
+| `akashic.py` (stdlib only: `json subprocess hashlib pathlib re fnmatch`) | `scan`, `stale`, `verify`, `anchor`, `prompt`, `bless` | call an LLM |
 
 Everything that can lose human work or mark stale content as fresh is deterministic code.
 Everything stochastic passes through a deterministic verification gate before it is
