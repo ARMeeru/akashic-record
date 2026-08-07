@@ -1,6 +1,6 @@
 # akashic-record — Wiki
 
-*Generated from commit `c3f60c9` on 2026-08-07 by akashic-record. This file is derived from `../catalog.json`; edit pages, not this TOC.*
+*Generated from commit `50791d6` on 2026-08-07 by akashic-record. This file is derived from `../catalog.json`; edit pages, not this TOC.*
 
 - [Project Overview](./index.md)
 - [Deterministic Core](./deterministic-core.md)
