@@ -70,6 +70,20 @@ FILE_EXT_RE = re.compile(
     r"\.(?:md|txt|rst|py|pyi|ts|tsx|js|jsx|mjs|cjs|mts|json|ya?ml|toml|cfg|ini"
     r"|sh|bash|zsh|sql|lock|css|scss|html?|xml|svg|png|jpe?g|gif|ico|pdf)$",
     re.IGNORECASE)
+# Global namespaces whose members are never in the application code a page
+# cites. `console.error` existing somewhere in the world is not evidence about
+# the file being documented, and warning on it teaches the reader to skim.
+BUILTIN_NAMESPACES = frozenset({
+    "console", "JSON", "Math", "Object", "Array", "String", "Number",
+    "Boolean", "Promise", "process", "Date", "RegExp", "Map", "Set", "Error",
+})
+# Words that carry identifier shape but are English *about* code rather than
+# code. A page explaining that ids are `kebab-case` and columns `snake_case`
+# is not naming a symbol, and no repo contains those strings.
+PROSE_TOKENS = frozenset({
+    "camelCase", "snake_case", "PascalCase", "kebab_case", "SCREAMING_SNAKE",
+    "SCREAMING_SNAKE_CASE",
+})
 VALID_STATUS = {"planned", "done"}
 
 
@@ -431,8 +445,9 @@ def check_identifiers(root, page_id, rel, body, resolved_citations):
         if not cited:
             continue
         for lineno, token in identifier_tokens(body, start, end):
-            needle = identifier_haystack(token)
-            if len(needle) < 3:
+            needles = [c.encode("utf-8", "surrogateescape")
+                       for c in identifier_candidates(token)]
+            if not needles:
                 continue
             found = False
             for path in cited:
@@ -441,8 +456,10 @@ def check_identifiers(root, page_id, rel, body, resolved_citations):
                         cache[path] = (root / path).read_bytes()
                     except OSError:
                         cache[path] = b""
-                if needle.encode("utf-8", "surrogateescape") in cache[path]:
+                if any(n in cache[path] for n in needles):
                     found = True
+                    break
+                if found:
                     break
             if not found:
                 warnings.append(
@@ -804,14 +821,39 @@ def identifier_tokens(body_text, start, end):
                 continue
             if FILE_EXT_RE.search(token):
                 continue
+            if token.split(".", 1)[0] in BUILTIN_NAMESPACES:
+                continue
+            if token in PROSE_TOKENS:
+                continue
             if IDENT_SHAPE_RE.match(token):
                 tokens.append((lineno, token))
     return tokens
 
 
-def identifier_haystack(token):
-    """What to actually search for: `foo()` and `foo(` both mean `foo`."""
-    return token.split("(", 1)[0].rstrip(".:")
+def identifier_candidates(token):
+    """Byte strings that would count as this token existing, in order.
+
+    `foo()` and `foo(` both mean `foo`. Beyond that, a *qualified* name
+    written in prose almost never appears qualified in the code it describes:
+    the column is declared `firstName` and the page calls it
+    `users.firstName`; the placeholder is `$1` and the page writes
+    `$n::uuid`. Searching only the full token made every `table.column` a
+    warning -- on a real 28-page wiki that was 43% of 187 findings, led by
+    `users`, `deliveries` and `meal_requests`.
+
+    So the last segment counts too. The cost is an invented `foo.bar` slipping
+    through when some unrelated `bar` exists, which at warning level is the
+    right direction to be wrong: a missed invention is one bad sentence, a
+    flood of false warnings kills the whole class."""
+    base = token.split("(", 1)[0].rstrip(".:")
+    out = [base]
+    for sep in ("::", "."):
+        if sep in base:
+            tail = base.rsplit(sep, 1)[-1]
+            if tail and tail not in out:
+                out.append(tail)
+            break
+    return [c for c in out if len(c) >= 3]
 
 
 def citation_span(root, path, fragment):
