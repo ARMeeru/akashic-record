@@ -288,10 +288,43 @@ class TestReviewRegressions(RepoCase):
         self.assertEqual(akashic.compute_stale(root)["edited"], ["index"],
                          "edit protection must survive re-anchoring")
 
-        catalog["pages"][0]["hash"] = None  # explicit bless (post-regeneration)
-        akashic.save_catalog(root, catalog)
+        akashic.bless_pages(root, ["index"])  # explicit bless (post-regeneration)
         akashic.anchor_repo(root)
         self.assertEqual(akashic.compute_stale(root)["edited"], [])
+
+    def test_bless_refuses_unknown_id_and_unwritten_page(self):
+        """bless exists so the orchestrator stops hand-editing catalog.json;
+        it has to refuse the two ways that hand-edit went wrong -- a typo'd id,
+        and blessing a page whose file was never actually written."""
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/**"], hash="sha256:old")])
+        root = akashic.repo_root(repo)
+
+        with self.assertRaises(SystemExit) as ctx:
+            akashic.bless_pages(root, ["ghost"])
+        self.assertEqual(ctx.exception.code, 2)
+
+        with self.assertRaises(SystemExit) as ctx:
+            akashic.bless_pages(root, ["index"])  # no wiki/index.md on disk
+        self.assertEqual(ctx.exception.code, 2)
+        self.assertEqual(akashic.load_catalog(root)["pages"][0]["hash"],
+                         "sha256:old",
+                         "a refused bless must not have mutated the catalog")
+
+    def test_bless_done_flips_planned_page(self):
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "a\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/**"],
+                                     status="planned", hash="sha256:old")])
+        self.write(repo, ".akashic/wiki/index.md", "# Index\n")
+        root = akashic.repo_root(repo)
+        akashic.bless_pages(root, ["index"], mark_done=True)
+        page = akashic.load_catalog(root)["pages"][0]
+        self.assertIsNone(page["hash"])
+        self.assertEqual(page["status"], "done")
 
     def test_untracked_citation_fails_verify(self):
         repo = self.valid_repo_for_verify()

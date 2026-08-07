@@ -123,11 +123,17 @@ Reparenting here is a one-line catalog edit; no file moves, ever.
   frontmatter-free file as-is, CRLF→LF, strip trailing whitespace per line, strip
   trailing newlines, UTF-8 bytes). Never updated to match human text — its meaning is
   permanently "what the tool wrote," so edit detection is a pure comparison.
-  **`null` is the bless signal**: the orchestrator sets `hash` to null immediately
-  after (re)writing a page; `anchor` records a new hash only for pages whose hash is
-  null or whose content is unchanged, and preserves the recorded hash otherwise — a
-  changed body under a non-null hash is a human edit, and re-hashing it would launder
-  the `edited` marker away.
+  **`null` is the bless signal**, set by `bless <id>` immediately after (re)writing a
+  page; `anchor` records a new hash only for pages whose hash is null or whose content
+  is unchanged, and preserves the recorded hash otherwise — a changed body under a
+  non-null hash is a human edit, and re-hashing it would launder the `edited` marker
+  away. Blessing is a subcommand rather than an instruction to edit `catalog.json`
+  because it was the one metadata mutation left to the stochastic side, and it was
+  two steps with no atomicity between them: a session dying after writing the page
+  but before editing the JSON leaves the tool's own fresh output under the previous
+  hash, which `stale` then reports as `edited` — the tool's work protected from the
+  tool as if it were human work. `bless` validates the id and the page file, then
+  writes once.
 - `frozen: true` — user-pinned entry: re-planning must never remove or rewrite it
   (DeepWiki `pages`-list semantics).
 - Glob semantics (`scope`, `exclude`): fnmatch with two gitignore-flavored
