@@ -52,11 +52,11 @@ flowchart LR
     Verify --> Anchor["3b. Anchor (script): record deps/hashes, stamp commit, render TOC"]
 ```
 
-Sources: [DESIGN.md:231-236](../../DESIGN.md#L231-L236), [DESIGN.md:238-244](../../DESIGN.md#L238-L244), [DESIGN.md:251-266](../../DESIGN.md#L251-L266), [DESIGN.md:309-337](../../DESIGN.md#L309-L337)
+Sources: [DESIGN.md:231-236](../../DESIGN.md#L231-L236), [DESIGN.md:238-244](../../DESIGN.md#L238-L244), [DESIGN.md:251-266](../../DESIGN.md#L251-L266), [DESIGN.md:315-343](../../DESIGN.md#L315-L343)
 
 Two things about Phase 2 are worth knowing before you touch it. Each subagent's prompt is rendered by `akashic.py prompt <id>`, never hand-written — the mechanical template carries the goal, the scope-expanded file allowlist, the sibling id-to-title list, and the citation contract, because an agent hand-constructing that prompt from memory is how the untracked-citation bug first shipped. And the standing generation rule is cite-or-omit: prefer "not documented here" over invention, with a `Sources:` entry behind every non-obvious claim. Scope is the citable boundary, but nothing enforces it at generation time; `verify` warns rather than errors when a page cites a real file outside its scope, which is a planning signal — scope too wide duplicates content, scope too narrow forces the subagent outside it. There is a hard precondition on the whole pipeline: a git repo with at least one commit, failing loudly rather than degrading, because the anchor model depends on it.
 
-Sources: [DESIGN.md:268-282](../../DESIGN.md#L268-L282), [DESIGN.md:290-307](../../DESIGN.md#L290-L307), [DESIGN.md:246-249](../../DESIGN.md#L246-L249)
+Sources: [DESIGN.md:268-282](../../DESIGN.md#L268-L282), [DESIGN.md:296-313](../../DESIGN.md#L296-L313), [DESIGN.md:246-249](../../DESIGN.md#L246-L249)
 
 ## On-disk format and invariants
 
@@ -99,7 +99,7 @@ Sources: [DESIGN.md:171-198](../../DESIGN.md#L171-L198), [DESIGN.md:199-212](../
 
 The update mechanism is the convergent one across every shipped system: a stored commit anchor plus a diff plus a per-page file-dependency map, triggered by polling or by hand — never per-push webhooks. `akashic.py stale` is read-only and prints JSON. It first checks that the anchor is reachable; if a force-push or shallow clone made it unreachable it says so and reports all pages stale rather than guessing, because wasting a regeneration is acceptable and marking stale content fresh is not. Then it diffs anchor to HEAD with rename detection, counting a rename as both old and new path, and intersects the changed paths against each page's recorded `files`, plus `scope` globs for added files. The result sorts into four buckets: `stale` pages get regenerated under the same Phase-2 contract; `edited` pages, where the current body hash differs from the recorded one, are never auto-overwritten; `orphaned` pages, whose documented files are all gone, are auto-deleted unless they are also edited, in which case they are only flagged; and `uncovered` added files may become proposed new catalog entries. The run ends by regenerating, verifying, anchoring, and printing a structured report that becomes the commit message. Pages carry no in-page changelog sections — pages are timeless, and temporal data belongs to git.
 
-Sources: [DESIGN.md:343-366](../../DESIGN.md#L343-L366), [DESIGN.md:433-438](../../DESIGN.md#L433-L438)
+Sources: [DESIGN.md:349-372](../../DESIGN.md#L349-L372), [DESIGN.md:439-444](../../DESIGN.md#L439-L444)
 
 ## Getting started
 
@@ -119,7 +119,7 @@ python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --
 
 Exit codes: 0 ok, 1 verification failure, 2 usage or precondition error. There is no build step, no dependencies, and no lint config; the suite runs with `python3 test_akashic.py`, and single classes or tests can be named directly. Fixtures are throwaway git repos built in `tempfile`, one smallest-possible check per deterministic component; the LLM phases have no unit tests, because the runtime `verify` gate is their coverage.
 
-Sources: [README.md:53-83](../../README.md#L53-L83), [CLAUDE.md:18-41](../../CLAUDE.md#L18-L41), [README.md:84-89](../../README.md#L84-L89), [CLAUDE.md:60-63](../../CLAUDE.md#L60-L63), [DESIGN.md:501-515](../../DESIGN.md#L501-L515)
+Sources: [README.md:53-83](../../README.md#L53-L83), [CLAUDE.md:18-41](../../CLAUDE.md#L18-L41), [README.md:84-89](../../README.md#L84-L89), [CLAUDE.md:60-63](../../CLAUDE.md#L60-L63), [DESIGN.md:507-521](../../DESIGN.md#L507-L521)
 
 ## Contributing and dogfooding
 
@@ -127,7 +127,7 @@ The default branch is `develop`; branch from it and target PRs at it, with commi
 
 This repo carries its own generated wiki in `.akashic/` and follows the skill's own rules: never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, or `generated` fields, running `bless <id>` after regenerating a page instead, never edit the derived `wiki/README.md`, and after source changes refresh through the update flow — `stale`, regenerate, `verify`, `anchor` — committed as `chore: refresh self-dogfooded wiki`.
 
-Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:479-499](../../DESIGN.md#L479-L499), [README.md:106-117](../../README.md#L106-L117), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:64-67](../../CLAUDE.md#L64-L67)
+Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:485-505](../../DESIGN.md#L485-L505), [README.md:106-117](../../README.md#L106-L117), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:64-67](../../CLAUDE.md#L64-L67)
 
 ## Security and license
 
@@ -145,6 +145,6 @@ A reading order for the first hour:
 4. `DESIGN.md` in the repo root, when you need the normative answer to a format or behavior question — especially §2 (division of labor), §3.3 (the citation grammar), and §8 (what is deliberately not built). Its build order also doubles as a dependency order for reading the source: `akashic.py`, then `test_akashic.py`, then `SKILL.md`, then `README.md`.
 5. `CONTRIBUTING.md` before your first PR, for the invariants and the branch and commit conventions.
 
-Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:517-526](../../DESIGN.md#L517-L526), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
+Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:523-532](../../DESIGN.md#L523-L532), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
 
-*Generated from commit `e21a66d` on 2026-08-07.*
+*Generated from commit `515e459` on 2026-08-07.*
