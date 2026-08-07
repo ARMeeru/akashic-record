@@ -265,6 +265,49 @@ Re-planning invariants (enforced by instruction + verify, not trusted to memory)
 existing entries are matched by `id` and ids are immutable; titles/goals/scopes may
 evolve; `frozen` entries pass through untouched; removals are reported, not silent.
 
+### Phase 1b — Plan-check (script, before any dispatch)
+
+`akashic.py plan-check` is a read-only, LLM-free look at the *shape* of the plan, run
+between planning and the fan-out. Until it existed the pipeline gated what subagents
+produced and gated nothing about what they were asked to do, so a scope matching no file
+or two pages scoped to the same bulk was discovered after the tokens were spent. In one
+26-page run against a real Next.js repo, two pages both scoped to all 86 migrations cost
+roughly 180k tokens of duplicated reading and made every schema change stale two pages
+instead of one.
+
+It emits JSON on stdout and a plain-language warning per finding on stderr:
+
+- **`no_scope` / `empty_scope`** — a page with no scope at all, and a page whose globs
+  match no tracked file. Kept apart because they are different mistakes: one is an
+  omission, the other a glob that looks right and silently is not. Until now the second
+  was visible only as a line inside a rendered prompt, read after dispatch.
+- **`subset`** — one page's scope entirely inside a sibling's. Both subagents read the
+  same bulk, both write about it, and every change there stales two pages.
+- **`overlap`** — a pair sharing at least half the smaller page's files, reported in
+  files *and* lines. Below that, overlap is normal: an index page legitimately touches
+  what its children cover, and warning on it would get the check routed around.
+- **`oversized`** — over the ~200-file split rule the planning instructions already
+  state. The threshold is read from that documented rule rather than invented here, so
+  the two cannot drift apart.
+- **`empty_goal` / `duplicate_titles`** — catalog sanity.
+- **`pages`** — expanded file and line totals per page, biggest first. Data rather than a
+  finding: a 10k-line outlier should be visible before dispatch instead of in the bill,
+  and picking a threshold for "too big" would be inventing one.
+
+Expansion goes through `expand_scope`, the same function that builds a subagent's citable
+list, so the check measures the real fan-out input rather than the globs someone typed.
+
+**Always exit 0.** Several findings are legitimate on a real catalog, and a pre-flight
+check that blocked would be routed around rather than read. Its output is also exactly
+what a plan-approval checkpoint should display to a human.
+
+Scope is deliberately narrow. These are questions a script can answer for free; whether a
+`goal` is *true* and reachable from its scope needs reading the code and judging meaning.
+Of the seven planning defects that motivated this work, these checks catch one — the
+duplicated-scope pair. The other six are goals asserting things that do not exist, goals
+whose subject lies outside their own scope, and pairs of goals claiming the same subject.
+Those belong to the plan critic and are not a reason to defer either piece.
+
 ### Phase 2 — Generate (N parallel subagents, one per page)
 
 Each subagent's prompt is **rendered by `akashic.py prompt <id>`, never hand-written**:

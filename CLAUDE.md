@@ -35,6 +35,7 @@ python3 akashic.py -C <repo> verify        # citation + catalog gate; exit 1 on 
 python3 akashic.py -C <repo> anchor        # verify, then record deps/hashes, stamp anchor, render TOC
 python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent prompt
 python3 akashic.py -C <repo> remap         # shift drifted citations to new line numbers (no LLM)
+python3 akashic.py -C <repo> plan-check    # pre-fan-out catalog shape checks (advisory, exit 0)
 python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --done also flips status
 ```
 
@@ -58,6 +59,7 @@ Invariants that shape most of the code:
 - **A citation's end line may exceed the real line count by exactly one** — Claude's Read tool shows one extra empty line for files ending in a trailing newline; `check_fragment` tolerates that specific +1 and rejects anything further.
 - **`.akashic/` paths are never staleness inputs or recorded dependencies** — the wiki must not depend on itself.
 - **Immediately after `anchor`, `stale` is empty** (tested). An unreachable anchor reports *all* pages stale rather than guessing — wasting a regen is acceptable; marking stale content fresh is not.
+- **`plan-check` gates the plan, advisory and always exit 0.** Shape-only checks before a fan-out: unmatched scope, a scope inside a sibling's, heavy pairwise overlap, the ~200-file split rule, empty goals, duplicate titles, plus per-page line totals. It expands scopes via `expand_scope`, so it measures the real fan-out input. Whether a `goal` is *true* is not its job.
 - **Subagent prompts are rendered by `prompt <id>`, never hand-written** — mechanical templating from catalog + filesystem is what prevents the untracked-citation class of bug.
 
 ## Tests
