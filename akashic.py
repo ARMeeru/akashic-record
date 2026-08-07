@@ -54,6 +54,22 @@ LINK_RE = re.compile(r"\[(.*?)\]\((<[^<>]*>|(?:[^()\s]|\([^()\s]*\))+)\)")
 FRAGMENT_RE = re.compile(r"^L(\d+)(?:-L(\d+))?$")
 HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
+CODE_SPAN_RE = re.compile(r"`([^`\n]+)`")
+# An identifier-shaped token: long enough to be meaningful, contains a
+# letter, and carries a shape prose would not (a call, snake_case,
+# camelCase, a dotted or scoped name). Deliberately narrow -- a false
+# warning on every backticked English word would train the operator to
+# ignore the whole class, which is how the out-of-scope warning nearly died.
+IDENT_SHAPE_RE = re.compile(
+    r"^(?=.*[A-Za-z])(?:[\w.:$]+\(\)?|[a-z0-9]+_[\w_]+|[a-z]+[A-Z]\w*|[\w$]+(?:\.[\w$]+)+|[\w$]+::[\w$:]+)$")
+# A filename is not an identifier: it carries a dot, so it matches the dotted
+# shape above, and whether it exists is the citation gate's question rather than
+# this one's. Denylisted by extension rather than by a generic "ends in a short
+# suffix" rule, which would swallow method calls like `service.send`.
+FILE_EXT_RE = re.compile(
+    r"\.(?:md|txt|rst|py|pyi|ts|tsx|js|jsx|mjs|cjs|mts|json|ya?ml|toml|cfg|ini"
+    r"|sh|bash|zsh|sql|lock|css|scss|html?|xml|svg|png|jpe?g|gif|ico|pdf)$",
+    re.IGNORECASE)
 VALID_STATUS = {"planned", "done"}
 
 
@@ -391,6 +407,51 @@ def check_fragment(fragment, file_data):
 
 # ---------------------------------------------------------------------- verify
 
+def check_identifiers(root, page_id, rel, body, resolved_citations):
+    """Warn when a backticked identifier appears in no file its section cites.
+
+    `verify` proves a citation resolves; it cannot prove the prose above it is
+    true. This closes the narrowest, most embarrassing part of that gap: a page
+    naming a function that does not exist anywhere in the files it points at.
+    The search is the whole cited file rather than the cited span, because a
+    page legitimately names a symbol defined elsewhere in the same module, and
+    the aim is catching invention rather than policing line numbers.
+
+    Warning-level, never an error. It is a heuristic over prose, and a
+    heuristic that blocks `anchor` would eventually block a correct page."""
+    per_section = {}
+    for lineno, path in resolved_citations:
+        per_section.setdefault(lineno, []).append(path)
+    warnings, cache = [], {}
+    for title, start, end in h2_sections(body):
+        cited = []
+        for lineno, paths in per_section.items():
+            if start <= lineno <= end:
+                cited.extend(paths)
+        if not cited:
+            continue
+        for lineno, token in identifier_tokens(body, start, end):
+            needle = identifier_haystack(token)
+            if len(needle) < 3:
+                continue
+            found = False
+            for path in cited:
+                if path not in cache:
+                    try:
+                        cache[path] = (root / path).read_bytes()
+                    except OSError:
+                        cache[path] = b""
+                if needle.encode("utf-8", "surrogateescape") in cache[path]:
+                    found = True
+                    break
+            if not found:
+                warnings.append(
+                    f"{page_id}: {rel} line {lineno}: `{token}` appears in no "
+                    f"file cited by section \"{title}\" -- check it is not "
+                    "invented, or cite where it lives")
+    return warnings
+
+
 def verify_repo(root):
     """The deterministic QA gate. Returns a list of error strings (empty = pass)."""
     catalog = load_catalog(root)
@@ -450,11 +511,14 @@ def verify_repo(root):
             errors.append(f"{pid}: {rel} line {lineno}: Sources block has no "
                           "parseable citation links")
 
+        resolved_citations = []
         for lineno, raw in citations:
             path, fragment, err = resolve_citation(root, page_file, raw)
             if err:
                 errors.append(f"{pid}: {rel} line {lineno}: {err}")
                 continue
+            if not path.startswith(AKASHIC_DIR + "/"):
+                resolved_citations.append((lineno, path))
             cited = root / path
             if path.startswith(AKASHIC_DIR + "/"):
                 if not cited.is_file():
@@ -485,6 +549,10 @@ def verify_repo(root):
                 warn(f"{pid}: {rel} line {lineno}: cites {path}, which is outside "
                      "this page's catalog scope (not necessarily wrong -- consider "
                      "whether scope should be widened, or the citation trimmed)")
+
+        for message in check_identifiers(root, pid, rel, body,
+                                         resolved_citations):
+            warn(message)
 
         for lineno, raw in wiki_links:
             path, _, err = resolve_citation(root, page_file, raw)
@@ -551,6 +619,59 @@ def parse_name_status(output):
             else:  # M, T, and anything else counts as a content change
                 modified.add(path)
     return modified, added, deleted, renames
+
+
+def h2_sections(body_text):
+    """[(title, first_line, last_line)] per H2, ignoring fenced blocks.
+
+    Shared on purpose: the identifier check, and anything later that wants to
+    reason about a page section at a time, need one definition of where a
+    section starts and stops -- three divergent splitters would be a bug
+    source rather than a convenience."""
+    lines = body_text.split("\n")
+    sections, current, in_fence = [], None, False
+    for lineno, line in enumerate(lines, start=1):
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if not in_fence and stripped.startswith("## "):
+            if current:
+                sections.append((current[0], current[1], lineno - 1))
+            current = (stripped[3:].strip(), lineno)
+    if current:
+        sections.append((current[0], current[1], len(lines)))
+    return sections
+
+
+def identifier_tokens(body_text, start, end):
+    """Backticked identifier-shaped tokens in lines [start, end], skipping
+    fences. A `Sources:` line is skipped too: its backticks are paths, and a
+    path is checked by the citation gate, not by this one."""
+    tokens, in_fence = [], False
+    for lineno, line in enumerate(body_text.split("\n"), start=1):
+        stripped = line.strip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+            continue
+        if in_fence or lineno < start or lineno > end:
+            continue
+        if SOURCES_RE.match(line):
+            continue
+        for span in CODE_SPAN_RE.findall(line):
+            token = span.strip()
+            if "/" in token or " " in token:
+                continue
+            if FILE_EXT_RE.search(token):
+                continue
+            if IDENT_SHAPE_RE.match(token):
+                tokens.append((lineno, token))
+    return tokens
+
+
+def identifier_haystack(token):
+    """What to actually search for: `foo()` and `foo(` both mean `foo`."""
+    return token.split("(", 1)[0].rstrip(".:")
 
 
 def citation_span(root, path, fragment):

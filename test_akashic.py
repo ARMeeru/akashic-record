@@ -595,6 +595,62 @@ class TestReviewRegressions(RepoCase):
         self.assertIsNone(page["hash"])
         self.assertEqual(page["status"], "done")
 
+    def identifier_repo(self, page_body):
+        repo = self.make_repo()
+        self.write(repo, "src/app.py",
+                   "def real_function():\n    return 1\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/*"])])
+        self.write(repo, ".akashic/wiki/index.md", page_body)
+        return akashic.repo_root(repo)
+
+    def warnings_from_verify(self, root):
+        buf = io.StringIO()
+        with contextlib.redirect_stderr(buf):
+            errors = akashic.verify_repo(root)
+        return errors, buf.getvalue()
+
+    def test_invented_identifier_warns_but_never_blocks(self):
+        """verify proves a citation resolves; it cannot prove the prose above
+        it is true. This closes the narrowest part of that gap -- a page naming
+        a function that exists in none of the files it points at -- and stays a
+        warning, because a heuristic over prose that blocked anchor would
+        eventually block a correct page."""
+        root = self.identifier_repo(
+            "# Index\n\n## Behaviour\n\nThe `imaginary_helper()` does the work.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [], "must not block anchor")
+        self.assertIn("imaginary_helper()", stderr)
+
+    def test_real_identifier_and_filenames_do_not_warn(self):
+        """A filename carries a dot and so matches the identifier shape, but
+        whether it exists is the citation gate's question, not this one's. A
+        false warning per backticked filename would train the operator to
+        ignore the whole class."""
+        root = self.identifier_repo(
+            "# Index\n\n## Behaviour\n\n`real_function()` lives in `src/app.py`, "
+            "described in `DESIGN.md`.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("appears in no file", stderr)
+
+    def test_fenced_example_identifiers_are_not_checked(self):
+        root = self.identifier_repo(
+            "# Index\n\n## Behaviour\n\nReal prose.\n\n"
+            "```python\nimaginary_helper()\n```\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("imaginary_helper", stderr)
+
+    def test_h2_sections_ignores_headings_inside_fences(self):
+        body = ("# Title\n\n## One\n\ntext\n\n```md\n## Not a section\n```\n\n"
+                "## Two\n\nmore\n")
+        self.assertEqual([t for t, _, _ in akashic.h2_sections(body)],
+                         ["One", "Two"])
+
     def test_untracked_citation_fails_verify(self):
         repo = self.valid_repo_for_verify()
         self.write(repo, "src/untracked.py", "x\n")  # exists on disk, not in git
