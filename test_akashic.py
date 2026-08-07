@@ -554,6 +554,35 @@ class TestRestated(RepoCase):
         self.commit(repo, "regen")
         self.assertEqual(akashic.plan_check(root)["no_goal_baseline"], [])
 
+    def test_ids_prints_one_page_id_per_line(self):
+        """Three runs have hand-written a JSON-to-shell adapter to do this,
+        and one of them passed twelve ids as a single string because zsh does
+        not word-split unquoted expansions."""
+        repo, root = self.brief_repo()
+        self.edit_catalog(repo, scope=["src/*"])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = akashic.cmd_stale(root, ids="restated")
+        self.assertEqual(code, 0)
+        self.assertEqual(buf.getvalue(), "p\n")
+
+    def test_ids_on_an_empty_bucket_prints_nothing_and_succeeds(self):
+        repo, root = self.brief_repo()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = akashic.cmd_stale(root, ids="stale")
+        self.assertEqual(code, 0, "a query is not a gate; --check is")
+        self.assertEqual(buf.getvalue(), "")
+
+    def test_ids_rejects_an_unknown_bucket_loudly(self):
+        """A typo yielding an empty loop is indistinguishable from nothing to
+        do, which is the silent success this project rejects everywhere."""
+        repo, root = self.brief_repo()
+        with self.assertRaises(SystemExit) as ctx:
+            with contextlib.redirect_stdout(io.StringIO()):
+                akashic.cmd_stale(root, ids="stael")
+        self.assertEqual(ctx.exception.code, 2)
+
     def test_the_runner_gate_sees_it(self):
         repo, root = self.brief_repo()
         self.edit_catalog(repo, scope=["src/*"])
@@ -1352,6 +1381,35 @@ class TestReviewRegressions(RepoCase):
                                     update=True)
         self.assertNotIn("already existed", upd)
         self.assertNotIn("Do not append", upd)
+
+    def test_prompt_out_keeps_the_prompt_out_of_the_orchestrator(self):
+        """The last command to get `--out` and the one dispatched most: once
+        per regenerated page, twelve times in a single real run."""
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "def a():\n    return 1\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("p", scope=["src/*"])])
+        root = akashic.repo_root(repo)
+        out = Path(tempfile.mkdtemp(prefix="akashic-prompt-")) / "p.md"
+        self.addCleanup(shutil.rmtree, out.parent, ignore_errors=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = akashic.cmd_prompt(root, "p", out=str(out))
+        self.assertEqual(code, 0)
+        self.assertIn("READ ONLY", out.read_text())
+        self.assertNotIn("READ ONLY", buf.getvalue(),
+                         "the prompt body must not also go to stdout")
+        self.assertIn("Read nothing else", buf.getvalue())
+
+    def test_prompt_out_refuses_to_write_inside_the_wiki_directory(self):
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "one\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("p", scope=["src/*"])])
+        root = akashic.repo_root(repo)
+        with self.assertRaises(SystemExit) as ctx:
+            akashic.cmd_prompt(root, "p", out=str(root / ".akashic" / "s.md"))
+        self.assertEqual(ctx.exception.code, 2)
 
     def test_prompt_unknown_page_id_fails(self):
         repo = self.make_repo()
