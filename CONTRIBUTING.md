@@ -14,6 +14,7 @@ Thanks for your interest. This project has some unusual, deliberate constraints 
 - `hash` permanently means "what the tool last wrote"; `null` is the bless signal. Never re-hash a changed body under a non-null hash — that launders the human-edit marker.
 - Citations resolve against git's tracked-path set, not the filesystem, and resolved paths must realpath inside the repo root.
 - `.akashic/` paths are never staleness inputs or recorded dependencies — the wiki must not depend on itself.
+- `goal_hash` is recorded **only for pages the tool actually wrote that run**. Stamping it on a page nobody regenerated asserts a correspondence nothing checked, and destroys the only record of what brief the text came from.
 
 ## Workflow
 
@@ -32,7 +33,7 @@ New deterministic behavior needs at least one smallest-possible `unittest` check
 
 ## Dogfooding
 
-This repo carries its own generated wiki in `.akashic/`. If your change touches source files, refresh it (`stale` → regenerate → `verify` → `anchor`) and commit the refresh as `chore: refresh self-dogfooded wiki`.
+This repo carries its own generated wiki in `.akashic/`. If your change touches source files, refresh it (`stale` → regenerate → `bless <id>` → `verify` → `anchor`) and commit the refresh as `chore: refresh self-dogfooded wiki`. Never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, `ranges`, `blobs` or `goal_hash` — `bless` is what tells the tool it wrote a page.
 
 ## Conduct
 

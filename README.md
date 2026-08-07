@@ -39,8 +39,9 @@ straight into your repo alongside the code it describes.
    like `Sources: [src/auth/jwt.ts:42-88](../../src/auth/jwt.ts#L42-L88)`.
 3. **Verify** — `akashic.py verify` is the one part of this that isn't an LLM:
    it mechanically checks that every citation resolves to a real, git-tracked
-   file with a valid line range before anything gets anchored. Nothing reaches
-   the wiki that a script hasn't confirmed is real.
+   file with a valid line range before anything gets anchored. It proves the
+   citation is real. It cannot prove the sentence above it is true — see
+   [what it does not do](#what-it-does-not-do).
 4. **Anchor** — records each page's file dependencies and content hash against
    the current commit, so a later `update` knows exactly which pages a given
    code change should regenerate — and never touches a page a human has
@@ -49,6 +50,40 @@ straight into your repo alongside the code it describes.
 A generated page looks like a normal architecture doc: prose, an occasional
 Mermaid diagram, and a `Sources:` line under every section pointing at the
 exact lines that back the claim above it.
+
+## What it does not do
+
+`verify` proves every citation resolves to a real, tracked file at a real line
+range. It does not prove the prose above the citation is true, and that gap is
+wider than it sounds. Across four update runs against a 28-page production repo,
+an adversarial claim audit was pointed at seven pages and found **all seven
+materially wrong** — a section describing a mechanism that existed in one
+migration and nowhere else; "nothing here is hard-deleted" above a literal
+`DELETE`; "nine components" above a table listing ten.
+
+So read a generated page as a map with footnotes rather than as territory. The
+citations tell you exactly where to check, which is the point of having them.
+
+Three things exist because of that gap, and none of them gates `anchor` — a
+heuristic over prose that blocked publishing would eventually block a correct
+page:
+
+- **`plan-check`** and **`plan-critic`** run *before* generation. The first is
+  free and deterministic: unmatched scopes, a scope inside a sibling's, every
+  overlapping pair ranked by duplicated lines. The second renders one adversarial
+  review prompt for the whole catalog and an LLM judges whether each page's brief
+  is truthful and reachable from its own files. A pass is one sample, not a
+  measurement; re-running on an unchanged catalog keeps finding things.
+- **`audit prompt <id>`** is an on-demand blind refuter. It hands a judge each
+  claim beside the exact bytes it cites, with the evidence labelled `[E1]`,
+  `[E2]` rather than by filename — because a judge shown a path fills gaps with
+  what a file of that name usually contains.
+- **Standing generation rules** in every page prompt: scope generalizations to
+  what was actually read, state the method behind any absence claim, and write
+  only what the goal asks.
+
+The one intervention that reliably fixes a wrong page is correcting its `goal`
+and regenerating.
 
 ## Install
 
@@ -73,7 +108,7 @@ The helper also works standalone:
 
 ```sh
 python3 akashic.py -C <repo> scan          # filtered file tree (planner input)
-python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncovered/missing/planned
+python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncovered/missing/planned/drifted/restated
 python3 akashic.py -C <repo> stale --check # same, exit 1 if any bucket is non-empty
 python3 akashic.py -C <repo> stale --ids <bucket>  # one page id per line, for shell loops
 python3 akashic.py -C <repo> verify        # citation + catalog checks (exit 1 on failure)
@@ -83,7 +118,7 @@ python3 akashic.py -C <repo> remap         # shift drifted citations to new line
 python3 akashic.py -C <repo> plan-check    # catalog shape checks before a fan-out
 python3 akashic.py -C <repo> plan-critic   # render the adversarial plan-review prompt (--out to a file)
 python3 akashic.py -C <repo> audit prompt <id>  # blind claim refuter (on demand; --out to write it to a file)
-python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating a page
+python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating (--done also flips status)
 ```
 
 ## Tests
@@ -114,12 +149,14 @@ receive failures on stdin; without it they still reach stderr.
 
 ## Roadmap
 
-All four milestones have shipped:
+All four milestones have shipped, and most of what came after them came out of
+running the tool against a real 28-page repo and fixing what broke:
 
 - **M0 — Hygiene and safety**: CI on the supported interpreters, documented glob semantics, a read-only mandate rendered into every subagent prompt.
 - **M1 — The loop exists**: the wiki updates itself via PR; no-op cycles cost zero tokens.
 - **M2 — Cheap, reviewable cycles**: most update PRs are tiny; pure line drift costs zero tokens and can auto-merge.
-- **M3 — Trust, right-sized**: `verify` warns on invented identifiers and on anchored content no citation covers; `plan-check` and `plan-critic` gate the plan before a fan-out instead of gating only its output.
+- **M3 — Trust, right-sized**: `verify` warns on invented identifiers and on anchored content no citation covers; `plan-check` and `plan-critic` review the plan before a fan-out instead of only its output.
+- **Field-driven since**: an on-demand blind claim audit; a `restated` bucket for a page whose *brief* changed rather than its sources; `--out` on every rendered prompt; and the generation rules above.
 
 What is left is the Backlog milestone — deliberately deferred, each item carrying the condition that would bring it back.
 
