@@ -38,7 +38,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | Command | Does | Output |
 |---|---|---|
 | `scan` | filtered file list with line counts (planner input) | a `# N files, M lines` header, then `lines<TAB>path` per file |
-| `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned/drifted/restated` |
+| `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned/drifted/restated/unblessed` |
 | `stale --check` | same report, plus exit 1 when any bucket is non-empty | zero-token gate for a scheduled runner |
 | `stale --ids <bucket>` | one page id per line for that bucket | plain text — loop over it directly, no JSON parsing |
 | `verify` | check pages, citations, catalog invariants; warn on invented identifiers and on anchored content no citation covers | errors, exit 1 if any |
@@ -213,6 +213,11 @@ no commits, too many files — relay these to the user verbatim; they are action
      `plan-critic`'s findings land — acting on them used to write into the catalog and
      never reach the page.
    - `missing` → regenerate from the catalog entry.
+   - `unblessed` → a page file exists but its catalog entry was never accepted, which
+     means a generation subagent wrote it and then died before `bless`. **Read the page
+     before deciding.** If it is complete, `bless <id> --done` accepts it as written and
+     costs nothing. Only regenerate if it is truncated or wrong — regenerating by reflex
+     throws away a finished page unread.
    - `edited` → **do not touch** (hard rule 2). List them for the user. A page in both
      `stale` and `edited` is reported as "stale but human-edited — needs manual review".
    - `orphaned` → delete `wiki/<id>.md` and its catalog entry; report. Never delete a

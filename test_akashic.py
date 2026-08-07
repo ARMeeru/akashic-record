@@ -178,8 +178,68 @@ class TestStale(RepoCase):
 
         report = akashic.compute_stale(akashic.repo_root(repo))
         self.assertEqual(report["planned"], ["ghost"])
+        self.assertEqual(report["unblessed"], [])
         self.assertEqual(report["missing"], [],
                          "missing is about done pages; planned is its own state")
+
+    def unblessed_repo(self):
+        """A page written by a subagent that died before it could be blessed:
+        file on disk, status still planned, no recorded hash."""
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        anchor = self.head(repo)
+        self.write(repo, ".akashic/wiki/done.md",
+                   "# Done\n\nSources: [f1](../../f1.py)\n")
+        self.write(repo, ".akashic/wiki/half.md",
+                   "# Half\n\nWritten but never accepted.\n\n"
+                   "Sources: [f1](../../f1.py)\n")
+        self.catalog(repo, [self.page("done", files=["f1.py"], scope=["f1.py"]),
+                            self.page("half", scope=["f1.py"],
+                                      status="planned")],
+                     anchor=anchor)
+        return repo, akashic.repo_root(repo)
+
+    def test_a_written_but_unblessed_page_is_not_invisible(self):
+        """The hole this closes. `planned` required the file to be ABSENT and
+        every other bucket iterates done pages, so a page whose subagent wrote
+        its file and then died sat in no bucket and `stale --check` exited 0
+        on it. That is the likelier half of the failure `planned` was added to
+        catch -- one field run lost 9 of 14 regenerations mid-write."""
+        repo, root = self.unblessed_repo()
+        report = akashic.compute_stale(root)
+        self.assertEqual(report["unblessed"], ["half"])
+        self.assertEqual(report["planned"], [],
+                         "the file exists; nobody needs to generate it")
+        self.assertTrue(
+            any(report[b] for b in akashic.WORK_BUCKETS),
+            "the whole defect was that every bucket came back empty")
+
+    def test_the_runner_gate_catches_an_unblessed_page(self):
+        """`stale --check` exiting 0 on a half-generated wiki is the failure
+        mode; a new bucket that the gate does not consult would be decoration."""
+        repo, root = self.unblessed_repo()
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = akashic.cmd_stale(root, check=True)
+        self.assertEqual(code, 1)
+
+    def test_unblessed_is_kept_separate_from_planned_because_remedies_differ(self):
+        """Folding it into `planned` would prescribe "generate this page" for
+        a page that already has a body, discarding it unread. Bless it and the
+        page leaves the bucket without being rewritten."""
+        repo, root = self.unblessed_repo()
+        before = (root / ".akashic/wiki/half.md").read_text()
+        akashic.bless_pages(root, ["half"], mark_done=True)
+        report = akashic.compute_stale(root)
+        self.assertEqual(report["unblessed"], [])
+        self.assertEqual((root / ".akashic/wiki/half.md").read_text(), before,
+                         "accepting a page must never rewrite it")
+
+    def test_unblessed_ids_are_addressable(self):
+        repo, root = self.unblessed_repo()
+        report = akashic.compute_stale(root)
+        self.assertEqual(akashic.bucket_ids(report, "unblessed"), ["half"])
 
     def test_check_exit_code_is_the_runners_zero_token_gate(self):
         repo = self.make_repo()
