@@ -36,6 +36,17 @@ NEEDS_UPDATE = "needs-update"
 REVIEW_ONLY = "review-only"
 REMAP_ONLY = "remap-only"
 
+# Only a remap PR may merge itself. Its diff is line numbers computed by
+# integer arithmetic from a git diff -- no model produced any of it, and a
+# reviewer can check it against the code in seconds. A PR containing generated
+# prose is a different object: verify proves its citations resolve, not that
+# its sentences are true, and that difference is exactly what a human is for.
+AUTO_MERGEABLE = frozenset({REMAP_ONLY})
+
+
+def may_auto_merge(verdict):
+    return verdict in AUTO_MERGEABLE
+
 
 def read_repo_list(text):
     """One repo path per line; `#` comments and blank lines ignored."""
@@ -138,7 +149,29 @@ def remap_repo(repo, branch, dry_run=False):
     run(["git", "add", ".akashic"], cwd=repo)
     run(["git", "commit", "-m", "chore: anchor remapped wiki"], cwd=repo)
     run(["git", "push", "-u", "origin", branch], cwd=repo)
-    run(["gh", "pr", "create", "--fill"], cwd=repo)
+    open_pr(repo, "chore(wiki): remap drifted citations",
+            "Cited lines moved without their content changing, so every line "
+            "number here was shifted by integer arithmetic from the diff. No "
+            "model ran. `verify` passed before this PR was opened.",
+            auto_merge=may_auto_merge(REMAP_ONLY))
+
+
+def open_pr(repo, title, body, auto_merge=False):
+    """Open the PR, and enable auto-merge only where the policy allows it.
+
+    Auto-merge is requested rather than performed: the required status checks
+    on the branch are what actually gate it, so a red run holds the PR open
+    instead of landing it. If the repo has auto-merge disabled the request
+    fails harmlessly and the PR simply waits for a human, which is why this
+    warns rather than raising."""
+    run(["gh", "pr", "create", "--title", title, "--body", body], cwd=repo)
+    if not auto_merge:
+        return
+    result = run(["gh", "pr", "merge", "--auto", "--merge"], cwd=repo,
+                 check=False)
+    if result.returncode != 0:
+        notify(f"{repo}: PR opened but auto-merge could not be enabled "
+               f"({result.stderr.strip()[:200]}); it needs merging by hand")
 
 
 def update_repo(repo, branch, dry_run=False):
@@ -168,7 +201,12 @@ def update_repo(repo, branch, dry_run=False):
     run(["git", "add", ".akashic"], cwd=repo)
     run(["git", "commit", "-m", "chore: refresh wiki"], cwd=repo)
     run(["git", "push", "-u", "origin", branch], cwd=repo)
-    run(["gh", "pr", "create", "--fill"], cwd=repo)
+    open_pr(repo, "chore(wiki): refresh stale pages",
+            "Pages regenerated because their sources changed. `verify` passed, "
+            "but these contain generated prose: verification proves the "
+            "citations resolve, not that the sentences above them are true. "
+            "Read the diff.",
+            auto_merge=may_auto_merge(NEEDS_UPDATE))
 
 
 def process(repo, dry_run=False):
