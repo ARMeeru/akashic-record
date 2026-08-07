@@ -33,6 +33,7 @@ python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncover
 python3 akashic.py -C <repo> verify        # citation + catalog gate; exit 1 on any error
 python3 akashic.py -C <repo> anchor        # verify, then record deps/hashes, stamp anchor, render TOC
 python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent prompt
+python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --done also flips status
 ```
 
 Exit codes: 0 ok, 1 verification failure, 2 usage/precondition error.
@@ -59,4 +60,4 @@ Invariants that shape most of the code:
 
 ## Dogfooding
 
-This repo carries its own generated wiki in `.akashic/`. Follow the skill's own rules here: never hand-edit `catalog.json`'s `anchor`/`hash`/`files`/`generated` fields (exception: set `hash` to `null` right after regenerating a page), never edit the derived `wiki/README.md`, and after source changes refresh via the update flow (`stale` → regenerate → `verify` → `anchor`), committing as `chore: refresh self-dogfooded wiki` per the existing history.
+This repo carries its own generated wiki in `.akashic/`. Follow the skill's own rules here: never hand-edit `catalog.json`'s `anchor`/`hash`/`files`/`generated` fields — run `bless <id>` after regenerating a page instead — never edit the derived `wiki/README.md`, and after source changes refresh via the update flow (`stale` → regenerate → `bless` → `verify` → `anchor`), committing as `chore: refresh self-dogfooded wiki` per the existing history.

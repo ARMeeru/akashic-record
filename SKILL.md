@@ -13,12 +13,14 @@ next to this file.
 ## Hard rules
 
 1. **The script is the only authority** for hashes, diffs, staleness, and citation
-   validity. Never compute or guess any of those yourself; never edit the `anchor`,
-   `hash`, `files`, or `generated` fields of `catalog.json` by hand — with one
-   exception: **immediately after you (re)generate a page, set its `hash` to
-   `null`**. That is the bless signal; `anchor` only records a new hash for pages
-   whose hash is null or unchanged, and preserves the recorded hash of anything
-   else (human edits stay protected across anchors).
+   validity. Never compute or guess any of those yourself, and **never edit the
+   `anchor`, `hash`, `files`, or `generated` fields of `catalog.json` by hand** —
+   there is no exception. Immediately after you (re)generate a page, run
+   `bless <id>` instead; that nulls its hash, which is the signal that the tool
+   wrote the current text. `anchor` records a new hash only for pages whose hash
+   is null or unchanged, and preserves the recorded hash of anything else (human
+   edits stay protected across anchors). `goal`, `scope`, `title` and `parent`
+   are yours to edit; the four fields above are the script's.
 2. **Never overwrite a page the script reports as `edited`.** That is detected human
    work. Regenerate it only when the user explicitly asks, and then pass the current
    human text into the generation prompt as immutable context to preserve.
@@ -40,6 +42,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | `verify` | check pages, citations, catalog invariants | errors, exit 1 if any |
 | `anchor` | record deps + hashes, stamp anchor commit, render TOC | summary |
 | `prompt <id>` | render the exact subagent prompt for one catalog page | text — dispatch it verbatim |
+| `bless <id>...` | mark pages as tool-written after regenerating them (`hash` → null); `--done` also flips `status` | summary |
 
 Exit codes: 0 ok, 1 verification failure, 2 precondition/usage error (e.g. no git repo,
 no commits, too many files — relay these to the user verbatim; they are actionable).
@@ -92,8 +95,9 @@ no commits, too many files — relay these to the user verbatim; they are action
    cross-links, untracked-context-doc detection); hand-typing this per page is how
    the original CLAUDE.md/AGENTS.md citation bug happened. Append only the
    operational reminders (target repo path, "don't run git-mutating commands" if
-   applicable) to the rendered text. Flip each page's `status` to `"done"` as its
-   file lands. Interrupted? Just re-run: generate pages still `planned`.
+   applicable) to the rendered text. Run `bless <id> --done` as each page's file
+   lands — that flips `status` and nulls the hash in one atomic write.
+   Interrupted? Just re-run: generate pages still `planned`.
 5. Run `verify`. Fix every error (repair citations or regenerate the page) and re-run
    until exit 0.
 6. Run `anchor`.
@@ -137,8 +141,8 @@ no commits, too many files — relay these to the user verbatim; they are action
 2. Act per bucket:
    - `stale` → regenerate each page (page contract, plus: "This page existed; its
      dependencies {changed} changed since the last anchor. Rewrite it to match the
-     current code — do not append a changelog."). Set each regenerated page's
-     `hash` to `null` in the catalog (hard rule 1).
+     current code — do not append a changelog."). Run `bless <id>` on each page
+     you regenerate (hard rule 1).
    - `missing` → regenerate from the catalog entry.
    - `edited` → **do not touch** (hard rule 2). List them for the user. A page in both
      `stale` and `edited` is reported as "stale but human-edited — needs manual review".

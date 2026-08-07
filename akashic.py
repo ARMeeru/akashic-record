@@ -691,6 +691,51 @@ def cmd_anchor(root):
     return 0
 
 
+# ----------------------------------------------------------------------- bless
+
+def bless_pages(root, page_ids, mark_done=False):
+    """Set `hash` to null for pages the tool just (re)wrote -- the one metadata
+    mutation the LLM side used to perform by hand-editing catalog.json.
+
+    Hand-editing was the documented exception to "the script owns catalog
+    metadata", and it was also the exception that could lose work: it is two
+    steps (write the page, then edit the JSON) with no atomicity between them,
+    so a session dying in the gap leaves the tool's own fresh output sitting
+    under the previous hash -- which `stale` then reports as `edited`, i.e. as
+    human work to be protected from the very tool that wrote it. One command,
+    one atomic save, no exception left to forget."""
+    catalog = load_catalog(root)
+    by_id = {p["id"]: p for p in catalog["pages"]}
+    wiki = wiki_dir(root)
+
+    for page_id in page_ids:
+        page = by_id.get(page_id)
+        if page is None:
+            die(f"no such page \"{page_id}\" in catalog")
+        page_file = wiki / f"{page_id}.md"
+        if not page_file.is_file():
+            die(f"cannot bless \"{page_id}\": "
+                f"{page_file.relative_to(root).as_posix()} does not exist "
+                "(write the page first)")
+
+    for page_id in page_ids:
+        page = by_id[page_id]
+        page["hash"] = None
+        if mark_done:
+            page["status"] = "done"
+    save_catalog(root, catalog)
+    return len(page_ids)
+
+
+def cmd_bless(root, page_ids, mark_done=False):
+    if not page_ids:
+        die("usage: akashic.py bless <page-id> [<page-id> ...]")
+    count = bless_pages(root, page_ids, mark_done=mark_done)
+    suffix = " and marked done" if mark_done else ""
+    print(f"blessed {count} page(s){suffix}: {', '.join(page_ids)}")
+    return 0
+
+
 # ---------------------------------------------------------------------- prompt
 
 # Common local-only agent-guidance filenames -- often excluded from git via
@@ -811,11 +856,19 @@ def main(argv=None):
     prompt_parser = sub.add_parser(
         "prompt", help="render the exact subagent prompt for one catalog page id")
     prompt_parser.add_argument("page_id")
+    bless_parser = sub.add_parser(
+        "bless", help="mark pages as tool-written (hash -> null) after regenerating")
+    bless_parser.add_argument("page_ids", nargs="+", metavar="page-id")
+    bless_parser.add_argument(
+        "--done", action="store_true",
+        help="also set status to done (use after generating a planned page)")
     args = parser.parse_args(argv)
 
     root = repo_root(args.path)
     if args.command == "prompt":
         return cmd_prompt(root, args.page_id)
+    if args.command == "bless":
+        return cmd_bless(root, args.page_ids, mark_done=args.done)
     command = {"scan": cmd_scan, "stale": cmd_stale,
                "verify": cmd_verify, "anchor": cmd_anchor}[args.command]
     return command(root)
