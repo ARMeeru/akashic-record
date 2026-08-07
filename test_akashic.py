@@ -736,6 +736,53 @@ class TestReviewRegressions(RepoCase):
         self.assertEqual(errors, [])
         self.assertNotIn("anchored to", stderr)
 
+    def test_a_qualified_prose_name_matches_its_bare_declaration(self):
+        """The dominant false positive on a real repo. A page writes
+        `users.firstName`; the column is declared `firstName` and the
+        qualified string appears nowhere. 43% of 187 warnings were this."""
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "firstName = 1\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/*"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\n## S\n\nThe `users.firstName` column.\n\n"
+                   "Sources: [src/app.py:1-1](../../src/app.py#L1-L1)\n")
+        errors, stderr = self.warnings_from_verify(akashic.repo_root(repo))
+        self.assertEqual(errors, [])
+        self.assertNotIn("users.firstName", stderr)
+
+    def test_an_invented_name_still_warns_when_no_segment_matches(self):
+        """The fallback must not swallow the case the check exists for."""
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "firstName = 1\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["src/*"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\n## S\n\nThe `users.lastName` column.\n\n"
+                   "Sources: [src/app.py:1-1](../../src/app.py#L1-L1)\n")
+        errors, stderr = self.warnings_from_verify(akashic.repo_root(repo))
+        self.assertEqual(errors, [])
+        self.assertIn("users.lastName", stderr)
+
+    def test_scoped_names_fall_back_on_their_last_segment_too(self):
+        root = self.identifier_repo(
+            "# Index\n\n## S\n\nCast it with `$n::real_function`.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertNotIn("real_function", stderr)
+
+    def test_builtin_namespaces_and_convention_words_are_not_identifiers(self):
+        """`console.error` existing somewhere in the world says nothing about
+        the file being documented, and a page explaining that ids are
+        `snake_case` is not naming a symbol."""
+        root = self.identifier_repo(
+            "# Index\n\n## S\n\nIt logs via `console.error` and names things "
+            "in `snake_case` and `camelCase`.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("appears in no file", stderr)
+
     def test_h2_sections_ignores_headings_inside_fences(self):
         body = ("# Title\n\n## One\n\ntext\n\n```md\n## Not a section\n```\n\n"
                 "## Two\n\nmore\n")
