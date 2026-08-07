@@ -3,7 +3,7 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 Repo wiki: .akashic/wiki/README.md (architecture + module docs with source citations)
-Roadmap: GitHub issues #1–#12 (milestones M1–M3 + Backlog) — issues carry sequencing constraints and a per-task definition of done; run `gh issue view <n>` before starting feature work.
+Roadmap: milestones M0–M3 are all shipped; only the Backlog milestone is open. GitHub issues carry sequencing constraints and a per-task definition of done — run `gh issue view <n>` before starting feature work, and `gh issue list --milestone Backlog` for what is deliberately deferred and its re-entry triggers.
 
 ## What this repo is
 
