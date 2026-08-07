@@ -978,6 +978,18 @@ class TestLoop(RepoCase):
         self.assertEqual(akashic_loop.classify(report),
                          akashic_loop.NEEDS_UPDATE)
 
+    def test_only_deterministic_prs_may_merge_themselves(self):
+        """The whole auto-merge policy in one assertion. A remap PR is integer
+        arithmetic a reviewer can re-derive; a regeneration PR contains prose
+        that `verify` cannot judge, and that difference is what a human is
+        for. If this ever inverts, unread generated text starts landing on the
+        default branch by itself."""
+        self.assertTrue(akashic_loop.may_auto_merge(akashic_loop.REMAP_ONLY))
+        for verdict in (akashic_loop.NEEDS_UPDATE, akashic_loop.REVIEW_ONLY,
+                        akashic_loop.CLEAN):
+            self.assertFalse(akashic_loop.may_auto_merge(verdict),
+                             f"{verdict} must never merge itself")
+
     def test_clean_repo_costs_nothing(self):
         report = {"stale": [], "edited": [], "orphaned": [], "uncovered": [],
                   "missing": [], "planned": []}

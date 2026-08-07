@@ -100,6 +100,11 @@ python3 bin/akashic_loop.py --dry-run     # what each repo needs, spending nothi
 python3 bin/akashic_loop.py               # refresh what needs it, by PR
 ```
 
+Only one kind of PR merges itself. A remap PR contains nothing but line numbers
+shifted by integer arithmetic from the diff, so it auto-merges once the branch's
+required checks pass. A PR containing regenerated pages always waits for a human:
+`verify` proves the citations resolve, not that the prose above them is true.
+
 Schedule it however this machine prefers. Set `$AKASHIC_NOTIFY` to a command that should
 receive failures on stdin; without it they still reach stderr.
 

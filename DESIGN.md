@@ -350,7 +350,15 @@ per-page file-dependency map; polling or manual trigger, never per-push webhooks
 repo list, runs `stale --check` per repo, and hands a repo to the LLM only when that
 check reports outstanding work. A quiet fleet therefore costs nothing to poll, which is
 what makes running it on a schedule reasonable rather than extravagant. Three properties
-are deliberate. It opens a **pull request** instead of committing, because unattended
+are deliberate. Only the deterministic half of that loop may merge itself: a remap PR is line numbers
+derived by arithmetic from a diff, re-checkable in seconds, and it auto-merges behind the
+branch's required status checks. A PR carrying regenerated pages never does — `verify`
+proves citations resolve, it says nothing about whether the sentences above them are
+true, and that gap is precisely what a reader is for. Requesting auto-merge rather than
+merging is deliberate: the required checks are the real gate, so a red run holds the PR
+open instead of landing it.
+
+It opens a **pull request** instead of committing, because unattended
 output should be read before it lands. It never regenerates a repo whose only finding is
 `edited` — a human wrote that page and hard rule 2 says leave it alone, so the loop
 reports it to the owner instead. And it **never exits 0 on failure**: an unverified
