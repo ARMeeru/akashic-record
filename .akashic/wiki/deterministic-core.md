@@ -1,8 +1,8 @@
 # Deterministic Core
 
-`akashic.py` is the half of akashic-record that must never be hallucinated: file scanning, the diff-to-stale-page mapping, citation verification, hash/anchor stamping, and deterministic rendering of the exact subagent prompt used to generate a page. It never calls an LLM, and the LLM side (catalog planning and page prose, described in [Skill Orchestration](./skill-orchestration.md)) never computes a hash, diff, line range, or prompt text. The script is stdlib-only Python 3.9+, exposes seven subcommands — `scan`, `stale`, `verify`, `anchor`, `prompt`, `remap`, `bless` — behind a `-C` directory flag, requires a git repository with at least one commit, and exits 0 on success, 1 on verification failures, 2 on usage or precondition errors. How these commands fit into the overall system is covered in [Project Overview](./index.md).
+`akashic.py` is the half of akashic-record that must never be hallucinated: file scanning, the diff-to-stale-page mapping, citation verification, hash/anchor stamping, and deterministic rendering of the exact subagent prompt used to generate a page. It never calls an LLM, and the LLM side (catalog planning and page prose, described in [Skill Orchestration](./skill-orchestration.md)) never computes a hash, diff, line range, or prompt text. The script is stdlib-only Python 3.9+, exposes eight subcommands — `scan`, `stale`, `verify`, `anchor`, `prompt`, `remap`, `plan-check`, `bless` — behind a `-C` directory flag, requires a git repository with at least one commit, and exits 0 on success, 1 on verification failures, 2 on usage or precondition errors. How these commands fit into the overall system is covered in [Project Overview](./index.md).
 
-Sources: [akashic.py:1-29](../../akashic.py#L1-L29), [akashic.py:95-104](../../akashic.py#L95-L104), [akashic.py:1535-1578](../../akashic.py#L1535-L1578)
+Sources: [akashic.py:1-29](../../akashic.py#L1-L29), [akashic.py:95-104](../../akashic.py#L95-L104), [akashic.py:1670-1717](../../akashic.py#L1670-L1717)
 
 ## scan — the planner's filtered view
 
@@ -34,7 +34,7 @@ Routing all consumers through the single function is what makes that one fix rea
 - **the orphaned-rescue clause** — the check that keeps a rewritten module classified stale rather than `orphaned` saw no surviving in-scope file, and the skill's remediation for `orphaned` deletes the page and its catalog entry;
 - **coverage and scope warnings** — `uncovered` and `verify`'s out-of-scope citation warning both take the same path.
 
-Sources: [akashic.py:177-189](../../akashic.py#L177-L189), [akashic.py:192-208](../../akashic.py#L192-L208), [akashic.py:682-686](../../akashic.py#L682-L686), [akashic.py:1066-1080](../../akashic.py#L1066-L1080), [akashic.py:1092-1103](../../akashic.py#L1092-L1103), [akashic.py:1195-1197](../../akashic.py#L1195-L1197), [akashic.py:1429-1441](../../akashic.py#L1429-L1441)
+Sources: [akashic.py:177-189](../../akashic.py#L177-L189), [akashic.py:192-208](../../akashic.py#L192-L208), [akashic.py:682-686](../../akashic.py#L682-L686), [akashic.py:1066-1080](../../akashic.py#L1066-L1080), [akashic.py:1092-1103](../../akashic.py#L1092-L1103), [akashic.py:1195-1197](../../akashic.py#L1195-L1197), [akashic.py:1564-1576](../../akashic.py#L1564-L1576)
 
 ## stale — bucket semantics
 
@@ -161,7 +161,28 @@ That carve-out was not merely inelegant, it could lose work. Hand-editing is two
 
 `bless_pages` validates every id and every page file before mutating anything: an id absent from the catalog and a page whose `wiki/<id>.md` was never written both die with exit 2, leaving the catalog untouched. Those are the two ways the hand-edit went wrong in practice — a typo'd id, and blessing a page a subagent never actually produced.
 
-Sources: [akashic.py:1246-1277](../../akashic.py#L1246-L1277), [akashic.py:1280-1286](../../akashic.py#L1280-L1286), [akashic.py:1557-1569](../../akashic.py#L1557-L1569)
+Sources: [akashic.py:1246-1277](../../akashic.py#L1246-L1277), [akashic.py:1280-1286](../../akashic.py#L1280-L1286), [akashic.py:1695-1707](../../akashic.py#L1695-L1707)
+
+## plan-check — the gate on the plan, not the output
+
+Every other command in this file gates what subagents produced. `plan-check` is the only one that looks at what they are about to be *asked* to do, and it runs before any of them is dispatched. Until it existed, a scope matching no file — or two pages scoped to the same bulk — was discovered after the tokens were spent. In one 26-page run against a real Next.js repo, two pages both scoped to all 86 migrations cost roughly 180k tokens of duplicated reading and made every schema change mark two pages stale instead of one.
+
+It is read-only and calls no LLM. JSON goes to stdout, a plain-language line per finding to stderr:
+
+- **`no_scope` and `empty_scope`** are deliberately separate. One is an omission; the other is a glob that looks right and silently matches nothing. The second was previously visible only as a line inside a rendered prompt, read after dispatch.
+- **`subset`** — one page's scope entirely inside a sibling's. A pair is reported once, under this heading rather than as overlap, because it is the sharper statement of the same fact.
+- **`overlap`** — a pair sharing at least `OVERLAP_RATIO` of the smaller page's files, counted in files *and* lines. Below that threshold overlap is ordinary: an index page legitimately touches what its children cover, and warning on that would get the whole check routed around.
+- **`oversized`** — over `SPLIT_THRESHOLD`, which is the ~200-file split rule the planning instructions already state. Reading the number from the documented rule rather than inventing one here is what keeps the two from drifting apart.
+- **`empty_goal`** and **`duplicate_titles`** — catalog sanity.
+- **`pages`** — expanded file and line totals, biggest first. Data rather than a finding: an outlier should be visible before dispatch instead of in the bill, and choosing a threshold for "too big" would mean inventing one.
+
+`scope_sizes` expands through `expand_scope`, the same function that builds a subagent's citable list, so the check measures the real fan-out input rather than the globs someone typed. Line counts are cached across pages, since overlapping scopes would otherwise read the same file repeatedly.
+
+`cmd_plan_check` always returns 0. Several findings are legitimate on a real catalog, and a pre-flight check that blocked would be routed around rather than read — the same reasoning that keeps the identifier and anchored-content checks at warning level.
+
+Its reach is narrow on purpose. Of the seven planning defects that motivated this work, these checks catch one: the duplicated-scope pair. The other six are goals asserting things that do not exist, goals whose subject lies outside their own scope, and pairs of goals claiming the same subject — all of which need reading the code and judging meaning, which no amount of glob arithmetic provides.
+
+Sources: [akashic.py:1415-1418](../../akashic.py#L1415-L1418), [akashic.py:1423-1423](../../akashic.py#L1423-L1423), [akashic.py:1426-1444](../../akashic.py#L1426-L1444), [akashic.py:1447-1512](../../akashic.py#L1447-L1512), [akashic.py:1515-1516](../../akashic.py#L1515-L1516), [akashic.py:1519-1546](../../akashic.py#L1519-L1546)
 
 ## prompt — deterministic subagent-prompt rendering
 
@@ -175,11 +196,11 @@ The rendered text closes with a **read-only mandate**: read and cite these files
 
 `cmd_prompt` requires a page id argument and dies with exit 2 if the id is not in the catalog, via the same `die()` path every other precondition failure uses.
 
-Sources: [akashic.py:1423-1426](../../akashic.py#L1423-L1426), [akashic.py:1429-1441](../../akashic.py#L1429-L1441), [akashic.py:1444-1447](../../akashic.py#L1444-L1447), [akashic.py:1450-1523](../../akashic.py#L1450-L1523), [akashic.py:1526-1530](../../akashic.py#L1526-L1530)
+Sources: [akashic.py:1558-1561](../../akashic.py#L1558-L1561), [akashic.py:1564-1576](../../akashic.py#L1564-L1576), [akashic.py:1579-1582](../../akashic.py#L1579-L1582), [akashic.py:1585-1658](../../akashic.py#L1585-L1658), [akashic.py:1661-1665](../../akashic.py#L1661-L1665)
 
 ## What the test suite proves
 
-`test_akashic.py` is 75 stdlib `unittest` tests over throwaway git-repo fixtures, one check per deterministic component. The invariants it pins down:
+`test_akashic.py` is 84 stdlib `unittest` tests over throwaway git-repo fixtures, one check per deterministic component. The invariants it pins down:
 
 - **Scan filtering**: a source file survives while a binary, a lockfile, an excluded glob, and `.akashic/` itself are all dropped.
 - **The canonical incremental mapping**: edit `f1`, delete `f2`, add `f3` yields exactly `{stale: [a], orphaned: [b], uncovered: [f3]}` with empty `edited`/`missing`.
@@ -193,6 +214,7 @@ Sources: [akashic.py:1423-1426](../../akashic.py#L1423-L1426), [akashic.py:1429-
 - **Edit protection survives re-anchoring**: a second anchor over a human-edited page keeps the original tool hash; only an explicit `hash: null` bless clears the `edited` state.
 - **A citation moved to the wrong lines is caught**: with the anchored content still findable, a page left citing the old numbers warns and names where the code actually went, while a correctly re-derived citation is silent; a region split across two citations counts as covered (including across a blank-line gap, asserted directly on `merge_spans`), repeated boundary lines produce no guess at all, and an unreachable anchor says nothing.
 - **The identifier warning stays a warning**: an invented function name is reported on stderr while `verify` still exits 0; a real identifier and a filename produce no warning; an identifier that appears only inside a fenced example is not checked; and `h2_sections` does not treat a `##` line inside a fence as a heading.
+- **Plan-check's shape findings**: a scope matching nothing is separated from a page with no scope at all; a scope inside a sibling's is reported once as a subset rather than twice; partial overlap is reported with both file and line counts while incidental overlap stays quiet; the split rule fires at the documented threshold; empty goals and duplicate titles are caught; line totals come back biggest first; and scope expansion drops the same noise a subagent's citable list would, so the check measures the real fan-out input.
 - **The loop's decision layer**: repo-list parsing, all four verdicts (including that an `edited`-only repo is never handed to an LLM and a drift-only repo never reaches a model), and the gate run against real fixture repos. Both directions of the dry-run notification are pinned too: a repo with outstanding work notifies rather than only printing, and a clean one stays silent. The `claude -p` call is deliberately uncovered, since a stubbed test would only assert the stub.
 - **Drift and remap**: a shift above the cited lines is reported as `drifted` rather than `stale`, `remap` moves both halves of the citation to the right numbers, a fenced example is left untouched, and a hand-edited page is never rewritten.
 - **Range intersection both ways**: a change outside the cited span leaves the page fresh, a change inside stales it, an append at end of file does not stale a cite-to-end page (the phantom-line clamp), a pure rename stays stale, and an uncited in-scope file keeps file-level staleness.
@@ -203,6 +225,6 @@ Sources: [akashic.py:1423-1426](../../akashic.py#L1423-L1426), [akashic.py:1429-
 - **Coverage semantics**: exact `files` entries do not shadow same-named files at other depths in the `uncovered` report, and noise is filtered there too.
 - **`prompt` rendering**: the citable list holds only tracked, in-scope files and omits an out-of-scope sibling file; scope expansion applies the scan filters, so a `src/**` scope offers `src/app.py` but never `bundle.min.js`, `package-lock.json`, an excluded `.snap`, or a binary; siblings and the page `goal` appear verbatim; the read-only mandate is rendered into every prompt; an untracked `CLAUDE.md` is named alongside a "NOT tracked by git" warning, and that paragraph is absent when no such doc exists; an unknown page id exits 2.
 
-Sources: [test_akashic.py:1-26](../../test_akashic.py#L1-L26), [test_akashic.py:29-86](../../test_akashic.py#L29-L86), [test_akashic.py:89-219](../../test_akashic.py#L89-L219), [test_akashic.py:221-271](../../test_akashic.py#L221-L271), [test_akashic.py:273-367](../../test_akashic.py#L273-L367), [test_akashic.py:369-412](../../test_akashic.py#L369-L412), [test_akashic.py:415-478](../../test_akashic.py#L415-L478), [test_akashic.py:481-531](../../test_akashic.py#L481-L531), [test_akashic.py:534-611](../../test_akashic.py#L534-L611), [test_akashic.py:672-737](../../test_akashic.py#L672-L737), [test_akashic.py:613-670](../../test_akashic.py#L613-L670), [test_akashic.py:739-877](../../test_akashic.py#L739-L877), [test_akashic.py:879-935](../../test_akashic.py#L879-L935), [test_akashic.py:937-1095](../../test_akashic.py#L937-L1095), [test_akashic.py:1098-1244](../../test_akashic.py#L1098-L1244)
+Sources: [test_akashic.py:1-26](../../test_akashic.py#L1-L26), [test_akashic.py:29-86](../../test_akashic.py#L29-L86), [test_akashic.py:89-219](../../test_akashic.py#L89-L219), [test_akashic.py:221-271](../../test_akashic.py#L221-L271), [test_akashic.py:273-367](../../test_akashic.py#L273-L367), [test_akashic.py:369-412](../../test_akashic.py#L369-L412), [test_akashic.py:415-478](../../test_akashic.py#L415-L478), [test_akashic.py:481-531](../../test_akashic.py#L481-L531), [test_akashic.py:534-611](../../test_akashic.py#L534-L611), [test_akashic.py:672-737](../../test_akashic.py#L672-L737), [test_akashic.py:613-670](../../test_akashic.py#L613-L670), [test_akashic.py:739-877](../../test_akashic.py#L739-L877), [test_akashic.py:879-935](../../test_akashic.py#L879-L935), [test_akashic.py:937-1095](../../test_akashic.py#L937-L1095), [test_akashic.py:1098-1199](../../test_akashic.py#L1098-L1199), [test_akashic.py:1202-1348](../../test_akashic.py#L1202-L1348)
 
-*Generated from commit `bdd03e78` on 2026-08-07.*
+*Generated from commit `271f783a` on 2026-08-07.*
