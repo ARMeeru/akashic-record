@@ -308,6 +308,45 @@ duplicated-scope pair. The other six are goals asserting things that do not exis
 whose subject lies outside their own scope, and pairs of goals claiming the same subject.
 Those belong to the plan critic and are not a reason to defer either piece.
 
+### Phase 1c — Plan critic (LLM, one subagent, before any dispatch)
+
+`plan-check` answers the shape questions a script can answer. Six of the seven planning
+defects observed in the 2026-07-30 dogfood run are about *meaning* and it cannot touch
+them: a goal promising "site types and parent/child relationships" where no parent column
+existed anywhere and the enum was used by no column on a different table; a goal promising
+plan→delivery expansion whose code lived outside its own scope; two pages both claiming
+Sentry; a goal describing the current schema from a scope holding 2 of 86 migrations.
+
+**Why nothing downstream catches these.** `verify` proves a citation *resolves*; it says
+nothing about whether the prose above it is what the page was asked to write. Cite-or-omit
+then means an under-scoped page does not fail — it quietly says *less*, reading as a
+deliberate "not documented here" and indistinguishable from an intentional omission. The
+defect is invisible in the output and invisible to the gate. The only existing tripwire is
+the out-of-scope citation warning, which fires after generation, once the tokens are spent.
+
+`akashic.py plan-critic` renders the review prompt; an LLM judges. The division of labor
+(§2) is unchanged: the script does mechanical templating from catalog + filesystem, in the
+`prompt <id>` idiom, and never judges. The prompt carries every page's id, title, goal,
+scope, expanded file list and line total, plus `plan-check`'s findings marked as already
+established so the judge spends its effort on meaning rather than re-deriving arithmetic.
+Long file lists are truncated at a stated count with the command to get the rest — never
+silently. The read-only mandate is rendered, for the same reason it is rendered into page
+prompts: a target repo's scope routinely includes operational scripts.
+
+Four judgments per page: **substantiation** (is every claim in the goal reachable from
+that page's file list, naming unreachable clauses specifically), **truthfulness** (does
+the goal assert what the code contradicts — a migration named `add-siteType-enums.js`
+existing is not evidence the thing has site types), **collision** (does another goal claim
+the same subject), **redundant scope** (do two pages read the same bulk in substance).
+
+**One prompt for the whole catalog, not one per page.** Two of the four judgments are
+cross-page and a per-page reviewer is structurally blind to them; a catalog is 8–30 pages,
+so a single adversarial pass costs a fraction of one page's generation. It also runs in
+the update flow wherever `uncovered` paths become new catalog entries, since a goal written
+for a module nobody has read yet is exactly the goal written from filenames.
+
+Advisory, like everything else in the pre-flight: it reports and never edits the catalog.
+
 ### Phase 2 — Generate (N parallel subagents, one per page)
 
 Each subagent's prompt is **rendered by `akashic.py prompt <id>`, never hand-written**:
