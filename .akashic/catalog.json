@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "2fdf46b562e621b0aec6768cbabad45ae59212ed",
-  "generated": "2026-08-07T09:28:55Z",
+  "anchor": "52f77701da6e72248a3ea6583c3e98d22610a418",
+  "generated": "2026-08-07T09:35:44Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,14 +30,14 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:bcd9620e84b115409b39a4c4927ed32f736eb01f65100255eecf51511bdc0a5c",
       "frozen": false,
       "blobs": {
-        "CLAUDE.md": "c3826626f44c5f6e6b511824e6465532d6eadb38",
+        "CLAUDE.md": "505aa8b9b04e8fb00bbdbcc230986366e4afddfa",
         "CONTRIBUTING.md": "85e0da41202b7d09f049ef65cad8f729c2eaac36",
-        "DESIGN.md": "55c71d41cb976da303e933ba1863bbc8a9debdea",
+        "DESIGN.md": "a0e6b81587937de87c1d6afd09f60ddbdf0d6cae",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
-        "README.md": "49712bc1222bbe8c14e61e575c22db5c8345de3b",
+        "README.md": "5cbe6826273a8a5714f3b585159fea6d99fb52ae",
         "SECURITY.md": "bfc548840a65633e8f1db49bb576b069bcf0d52f"
       },
       "ranges": {
@@ -64,15 +64,15 @@
           ],
           [
             52,
-            68
+            69
           ],
           [
-            70,
-            72
+            71,
+            73
           ],
           [
-            74,
-            76
+            75,
+            77
           ]
         ],
         "CONTRIBUTING.md": [
@@ -179,20 +179,20 @@
             521
           ],
           [
-            619,
-            624
+            627,
+            632
           ],
           [
-            696,
-            716
+            704,
+            724
           ],
           [
-            729,
-            741
+            737,
+            749
           ],
           [
-            745,
-            752
+            753,
+            760
           ]
         ],
         "LICENSE": [
@@ -262,11 +262,11 @@
         "test_akashic.py"
       ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:1b3cccc7f0b1fee8904b6d2f187f0a37a3b5bdfeb97c0141287b91e93d8a9ae1",
       "frozen": false,
       "blobs": {
-        "akashic.py": "7eaf2c43bd4c2dfe0061bda6895668c867d4057e",
-        "test_akashic.py": "5d1116cc0c63914f59d241891cb3dc5e9b24536f"
+        "akashic.py": "c45c9a0f520fb71f334dec43c293a7fe079b8828",
+        "test_akashic.py": "378e12891c4f6682fa79657c2b6c203a4f94ce60"
       },
       "ranges": {
         "akashic.py": [
@@ -516,43 +516,43 @@
           ],
           [
             1854,
-            1927
+            1975
           ],
           [
-            1930,
-            1934
+            1978,
+            1982
           ],
           [
-            1939,
-            1959
+            1987,
+            2007
           ],
           [
-            1962,
-            1970
+            2010,
+            2018
           ],
           [
-            1973,
-            2016
+            2021,
+            2064
           ],
           [
-            2023,
-            2039
+            2071,
+            2087
           ],
           [
-            2042,
-            2111
+            2090,
+            2159
           ],
           [
-            2114,
-            2121
+            2162,
+            2169
           ],
           [
-            2126,
-            2192
+            2174,
+            2244
           ],
           [
-            2165,
-            2181
+            2217,
+            2233
           ]
         ],
         "test_akashic.py": [
@@ -610,23 +610,23 @@
           ],
           [
             1077,
-            1235
+            1305
           ],
           [
-            1238,
-            1391
+            1308,
+            1461
           ],
           [
-            1394,
-            1480
+            1464,
+            1550
           ],
           [
-            1483,
-            1580
+            1553,
+            1650
           ],
           [
-            1583,
-            1729
+            1653,
+            1799
           ]
         ]
       },
@@ -735,10 +735,10 @@
         "SKILL.md"
       ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:df229ee0d9bb267943cd42cc031eb37f1dc89011168372903f9e49ecb0583258",
       "frozen": false,
       "blobs": {
-        "SKILL.md": "5c7fbf94b7195dfbd8572006a70942df73e34013"
+        "SKILL.md": "563af3e78643f274669d5bf4c263d71e1ee79338"
       },
       "ranges": {
         "SKILL.md": [
@@ -764,15 +764,15 @@
           ],
           [
             175,
-            208
+            228
           ],
           [
-            230,
-            232
+            250,
+            252
           ],
           [
-            234,
-            241
+            254,
+            261
           ]
         ]
       },
