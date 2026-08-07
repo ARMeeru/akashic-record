@@ -1149,17 +1149,69 @@ class TestPlanCheck(RepoCase):
         self.assertEqual(found["files"], 2)
         self.assertEqual(found["lines"], 3, "2 lines in a.py plus 1 in b.py")
 
-    def test_incidental_overlap_stays_quiet(self):
-        """Below the threshold, sharing a file is normal -- an index page
-        legitimately touches what its children cover. Warning on it would get
-        the whole check routed around."""
+    def test_overlap_is_ranked_by_duplicated_lines_not_file_count(self):
+        """The defect that shipped: gating on shared files as a fraction of
+        the smaller page missed a pair sharing one enormous file. Cost is
+        measured in lines a second subagent re-reads, so lines order it."""
+        tree = {"src/huge.py": "x\n" * 400, "src/a.py": "x\n",
+                "src/b.py": "x\n", "src/c.py": "x\n", "src/d.py": "x\n"}
+        report = self.plan_repo([
+            self.page("big", scope=["src/huge.py", "src/a.py", "src/b.py"],
+                      status="planned"),
+            self.page("one-huge-file", scope=["src/huge.py", "src/c.py"],
+                      status="planned"),
+            self.page("many-tiny", scope=["src/a.py", "src/b.py", "src/d.py"],
+                      status="planned")], tree=tree)
+        pairs = [(o["pages"], o["files"], o["lines"])
+                 for o in report["overlap"]]
+        self.assertEqual(
+            pairs[0][0], ["big", "one-huge-file"],
+            f"one 400-line shared file must outrank two 1-line ones: {pairs}")
+        self.assertEqual(pairs[0][1], 1, "and it shares fewer files")
+        self.assertEqual(pairs[1][0], ["big", "many-tiny"])
+        self.assertEqual(pairs[1][1], 2)
+
+    def test_growing_one_page_never_silences_an_unrelated_pair(self):
+        """Monotonicity, and the exact regression. Widening a page from 5 to 7
+        files for unrelated reasons dropped a true warning about a different
+        pair whose intersection had not changed. Any ratio against page size
+        has this defect: the denominator moves for reasons the pair knows
+        nothing about."""
+        tree = {f"src/f{i}.py": "x\n" for i in range(9)}
+        shared = ["src/f0.py", "src/f1.py"]
+        before = self.plan_repo([
+            self.page("a", scope=shared + ["src/f2.py"], status="planned"),
+            self.page("b", scope=shared + ["src/f3.py", "src/f4.py"],
+                      status="planned")], tree=tree)
+        after = self.plan_repo([
+            self.page("a", scope=shared + ["src/f2.py", "src/f5.py",
+                                           "src/f6.py", "src/f7.py",
+                                           "src/f8.py"], status="planned"),
+            self.page("b", scope=shared + ["src/f3.py", "src/f4.py"],
+                      status="planned")], tree=tree)
+
+        def found(report):
+            return [o for o in report["overlap"] if o["pages"] == ["a", "b"]]
+        self.assertEqual(len(found(before)), 1)
+        self.assertEqual(len(found(after)), 1,
+                         "growing page a must not drop the a/b finding")
+        self.assertEqual(found(before)[0]["files"], found(after)[0]["files"],
+                         "the intersection itself never changed")
+
+    def test_every_overlapping_pair_is_listed(self):
+        """No threshold. Deciding which overlaps matter needs judgement about
+        what the pages are for, which is plan-critic's job -- and it receives
+        this list. A script that pre-filtered would hide the case it got
+        wrong, which is exactly what happened."""
         tree = {f"src/f{i}.py": "x\n" for i in range(6)}
         report = self.plan_repo([
             self.page("one", scope=[f"src/f{i}.py" for i in range(4)],
                       status="planned"),
             self.page("two", scope=["src/f3.py", "src/f4.py", "src/f5.py"],
                       status="planned")], tree=tree)
-        self.assertEqual(report["overlap"], [])
+        self.assertEqual([o["pages"] for o in report["overlap"]],
+                         [["one", "two"]])
+        self.assertEqual(report["overlap"][0]["files"], 1)
 
     def test_oversized_scope_cites_the_documented_split_rule(self):
         tree = {f"src/f{i}.py": "x\n"

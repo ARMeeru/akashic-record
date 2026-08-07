@@ -1417,10 +1417,11 @@ def cmd_remap(root):
 # means the page should be split. Reading the number from the documented rule
 # rather than inventing one keeps the two from drifting apart.
 SPLIT_THRESHOLD = 200
-# Half the smaller page's files shared is the point where two subagents are
-# reading the same bulk and will write some of the same prose. Below that,
-# overlap is normal -- an index page legitimately touches what others cover.
-OVERLAP_RATIO = 0.5
+# How many overlapping pairs to name on stderr. A display cap, not a
+# threshold on truth: the full list is always in the JSON and the true count
+# is always stated, because a silently shortened list reads as "that's all
+# of them".
+OVERLAP_SUMMARY = 3
 
 
 def scope_sizes(root, catalog, paths=None):
@@ -1458,7 +1459,24 @@ def plan_check(root):
     free. Whether a page's `goal` is *true* and reachable from its scope needs
     reading the code and judging meaning, which is the plan critic's job, not
     this one's -- of the seven planning defects that motivated both, these
-    checks catch one. Cheap and useful is the whole claim."""
+    checks catch one. Cheap and useful is the whole claim.
+
+    **Overlap is reported, never judged.** It first shipped gated on shared
+    files as a fraction of the smaller page's file count, and that was wrong
+    twice over. It measured the wrong quantity: on a real 28-page catalog it
+    stayed silent on a pair sharing 3632 lines (ratio 0.27) while reporting
+    one sharing 2754 (ratio 0.69), because one huge shared file is few files.
+    And it was non-monotonic: widening a page from 5 files to 7 for unrelated
+    reasons dropped a true warning about a *different* pair whose intersection
+    had not changed at all. Any ratio against page size has that defect, since
+    the denominator moves for reasons the pair knows nothing about.
+
+    So there is no threshold. Every overlapping pair is listed, sorted by
+    duplicated lines, and judging which matter is left to `plan-critic` --
+    which already receives this report. That is the intended division of
+    labour: the script measures, the model judges. It also matches the
+    treatment of per-page line totals, where picking a number for "too big"
+    would have meant inventing one."""
     catalog = load_catalog(root)
     sized, lines_of = scope_sizes(root, catalog)
     pages = [{"id": p["id"], "files": len(sized[p["id"]][0]),
@@ -1505,10 +1523,13 @@ def plan_check(root):
                 report["subset"].append(
                     {"page": inner, "of": outer, "files": len(shared)})
                 continue
-            if len(shared) / min(len(fa), len(fb)) >= OVERLAP_RATIO:
-                report["overlap"].append(
-                    {"pages": sorted([a, b]), "files": len(shared),
-                     "lines": sum(lines_of[r] for r in shared)})
+            report["overlap"].append(
+                {"pages": sorted([a, b]), "files": len(shared),
+                 "lines": sum(lines_of[r] for r in shared)})
+    # Sorted by duplicated lines, because that is the cost: two subagents
+    # reading the same bulk. Every overlapping pair is listed and none is
+    # judged -- see the note on the removed threshold below.
+    report["overlap"].sort(key=lambda o: (-o["lines"], o["pages"]))
     return report
 
 
@@ -1539,10 +1560,15 @@ def cmd_plan_check(root):
         warn(f"plan-check: \"{item['page']}\" scope is entirely inside "
              f"\"{item['of']}\" ({item['files']} files); both subagents read "
              "the same bulk, and every change there stales both pages")
-    for item in report["overlap"]:
-        warn(f"plan-check: {' and '.join(item['pages'])} share "
-             f"{item['files']} files / {item['lines']} lines; expect "
-             "duplicated prose from independent subagents")
+    if report["overlap"]:
+        top = report["overlap"][:OVERLAP_SUMMARY]
+        named = "; ".join(f"{' and '.join(o['pages'])} ({o['lines']} lines)"
+                          for o in top)
+        rest = len(report["overlap"]) - len(top)
+        warn(f"plan-check: {len(report['overlap'])} page pair(s) share files "
+             f"and will read the same bulk. Largest: {named}"
+             + (f"; {rest} more in the JSON" if rest else "")
+             + ". Not judged here -- plan-critic sees the full list.")
     return 0
 
 
