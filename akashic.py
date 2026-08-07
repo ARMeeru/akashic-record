@@ -542,8 +542,11 @@ def check_anchored_content(root, anchor, page, rel, current, cache):
     Nothing new has to be recorded to close it. `ranges` are already stored in
     anchor coordinates and the anchor commit is already stored, so the tool can
     read what a span actually held and find that content in the working tree.
-    If no current citation covers where it landed, the page has stopped
-    pointing at the code it was anchored to.
+    If *no* current citation touches where it landed, the page has stopped
+    pointing at the code it was anchored to. Touching, rather than covering:
+    a rewrite that narrows or splits a range is doing its job, and only a
+    citation that has moved off the content entirely is the defect this was
+    built for.
 
     Warning-level, like check_identifiers. Re-scoping a page drops citations on
     purpose, and a check that blocked `anchor` for that would be wrong more
@@ -572,7 +575,17 @@ def check_anchored_content(root, anchor, page, rel, current, cache):
             if not found:
                 continue  # repeated boundary lines: no answer beats a guess
             lo, hi = found
-            if any(s <= lo and hi <= e for s, e in covered):
+            # Overlap, not containment. Requiring the whole anchored span to
+            # sit inside one merged citation assumed a correct rewrite still
+            # cites at least as much as the last one did -- and a good rewrite
+            # routinely cites *less*, because tighter ranges are the
+            # improvement. That assumption made the check noisiest exactly
+            # when it is least useful: immediately after a regeneration, the
+            # only time it runs in the normal flow. Its first live outing
+            # produced 13 warnings, every one a narrowed or split citation and
+            # none a dropped claim. "Cited nowhere" is the honest question,
+            # and it is what the warning text already claims to ask.
+            if any(lo <= e and s <= hi for s, e in covered):
                 continue
             uncovered.append((start, end, lo, hi))
         if not uncovered:
