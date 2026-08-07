@@ -364,6 +364,18 @@ the update flow wherever `uncovered` paths become new catalog entries, since a g
 for a module nobody has read yet is exactly the goal written from filenames.
 
 Advisory, like everything else in the pre-flight: it reports and never edits the catalog.
+`--out PATH` writes the prompt to a file and prints the dispatch line instead, for the same
+reason `audit prompt` has it (§5b) — it rendered 49KB on a real run and printing it costs
+that twice.
+
+**A critic pass is one sample, not a measurement, and the prompt now says so.** Two passes
+over an unchanged catalog disagreed in both directions: five pages called defective in the
+first were called fine in the second, while the second found two real defects the first
+had missed entirely — both confirmed against the source. That is inherent to an LLM
+judging meaning and is the price of the only check that can read code and form an opinion.
+But a report ending "13 pages need edits" reads as a measurement. It is not. A page the
+critic calls fine is not proven fine, a count is not converging across runs, and rerunning
+on an unchanged catalog is a legitimate way to find more rather than a redundancy.
 
 ### Phase 2 — Generate (N parallel subagents, one per page)
 
@@ -693,6 +705,16 @@ orchestrator gaining nothing from having read it. Telling a subagent to read one
 file is the same kind of instruction as telling it not to browse, at half the price. It
 refuses to write inside `.akashic/`, where a scratch file of that size would surface as
 `uncovered` and be committed with the wiki.
+
+**The judge must not grade attribution, and the prompt says so.** Withholding filenames
+has a cost that only showed up in the field: a page saying a fact comes from the README is
+making a claim the judge is structurally unable to check, and it reported every one of them
+as unsupported. On one real page that turned a roughly 3-of-9 result into 1-of-9, which is
+distortion enough to make the output hard to read. The fix is one instruction, not a design
+change — **handing the judge the `Sources:` paths was considered and rejected**, because a
+filename is precisely the input the labelling exists to withhold, and the citation gate
+already proves every cited path resolves to a real tracked file. Its section counts carry
+the same sampling caveat as the plan critic's.
 
 The division of labor (§2) holds exactly: the script renders prompts and extracts bytes,
 and never calls an LLM; the LLM judges, and never computes a range.
