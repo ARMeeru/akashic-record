@@ -432,6 +432,21 @@ Standing generation instructions that matter:
     would train the operator to ignore the class. The search is the whole cited file
     rather than the cited span: a page legitimately names a symbol defined elsewhere in
     the same module, and the aim is catching invention, not policing line numbers.
+    A **qualified** name written in prose also matches its bare declaration: the column
+    is declared `firstName` and the page calls it `users.firstName`, so the last segment
+    of a dotted or scoped token counts as a match. Searching only the full token made
+    every `table.column` a warning — on a real 28-page wiki that was 43% of 187 findings.
+    The cost is an invented `foo.bar` slipping through when an unrelated `bar` exists,
+    which at warning level is the right direction to be wrong. Two small denylists sit
+    beside it: global namespaces whose members never appear in application code
+    (`console`, `JSON`, `Math`, …), and naming-convention words that carry identifier
+    shape but are English about code (`camelCase`, `snake_case`).
+    **Calibration is against a real external repo, not this one.** The original claim of
+    "zero false positives" was measured on four Python pages here, a corpus that could
+    not have caught the qualified-name class; the same check emitted 187 warnings on a
+    28-page TypeScript wiki. After the fix that repo reports 106, of which 82 of 87
+    distinct tokens do exist in the repo but outside the files their section cites —
+    genuinely a page naming what it cannot cite, which is the finding, not noise.
   - **anchored content still cited** (warning): a range check that asks about content
     rather than bounds. `verify` proves a citation lands inside its file, so a citation
     rewritten to plausible-but-wrong numbers passes every gate — three separate
