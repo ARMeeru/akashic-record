@@ -1564,6 +1564,45 @@ class TestPlanCritic(RepoCase):
         self.assertIn("READ ONLY", text)
         self.assertIn("do not edit the catalog", text)
 
+    def test_the_critic_is_told_its_verdict_is_one_sample(self):
+        """Two passes over an unchanged catalog disagreed in both directions.
+        That is inherent to an LLM judging meaning, but a report ending "13
+        pages need edits" reads as a measurement, and nothing said otherwise."""
+        text = self.critic_repo(
+            [self.page("one", scope=["src/*"], status="planned")])
+        self.assertIn("one sample, not a measurement", text)
+        self.assertIn("stated as a sample", text)
+
+    def test_critic_out_writes_the_prompt_and_prints_a_dispatch_line(self):
+        """Same cost and same shape as `audit prompt`, which got `--out` first;
+        this one rendered 49KB on a real run and was read then pasted."""
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "one\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("p", scope=["src/*"], status="planned")])
+        root = akashic.repo_root(repo)
+        out = Path(tempfile.mkdtemp(prefix="akashic-critic-")) / "c.md"
+        self.addCleanup(shutil.rmtree, out.parent, ignore_errors=True)
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(buf):
+            code = akashic.cmd_plan_critic(root, out=str(out))
+        self.assertEqual(code, 0)
+        self.assertIn("Judge each page on four questions", out.read_text())
+        self.assertNotIn("four questions", buf.getvalue(),
+                         "the prompt body must not also go to stdout")
+        self.assertIn("Read nothing else", buf.getvalue())
+
+    def test_critic_out_refuses_to_write_inside_the_wiki_directory(self):
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "one\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("p", scope=["src/*"], status="planned")])
+        root = akashic.repo_root(repo)
+        with self.assertRaises(SystemExit) as ctx:
+            akashic.cmd_plan_critic(
+                root, out=str(root / ".akashic" / "scratch.md"))
+        self.assertEqual(ctx.exception.code, 2)
+
     def test_an_empty_catalog_fails_rather_than_rendering_nothing(self):
         repo = self.make_repo()
         self.write(repo, "src/a.py", "one\n")
@@ -1694,6 +1733,18 @@ class TestAudit(RepoCase):
                 root, "index", out=str(root / ".akashic" / "scratch.md"))
         self.assertEqual(ctx.exception.code, 2)
         self.assertFalse((root / ".akashic" / "scratch.md").exists())
+
+    def test_the_judge_is_told_not_to_grade_attribution(self):
+        """It cannot see filenames by construction, so it cannot tell a
+        correctly remembered one from an invention -- and reported every
+        correct attribution as unsupported, which distorted the headline
+        count enough to make the output hard to read."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        text = akashic.render_audit_prompt(root, "index")
+        self.assertIn("Do not judge attribution", text)
+        self.assertIn("one sample rather than a score", text)
 
     def test_unknown_page_ids_fail_rather_than_auditing_nothing(self):
         root = self.audit_repo(

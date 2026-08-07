@@ -1801,6 +1801,14 @@ def render_plan_critic(root, catalog):
         "Prefer naming a specific doubt over a general reassurance, and say "
         "plainly when a goal is fine.",
         "",
+        "Your review is **one sample, not a measurement**. Two passes over an "
+        "unchanged catalog have disagreed in both directions: five pages "
+        "called defective in one were called fine in the next, while that "
+        "next pass found two real defects the first had missed entirely. "
+        "Judge this catalog on its merits rather than trying to agree with "
+        "some earlier verdict, and say so in your report -- a reader must not "
+        "read a clean page as proven clean, or a count as converging.",
+        "",
         "## Report",
         "",
         "For each page with a problem: the page id, which of the four "
@@ -1808,8 +1816,8 @@ def render_plan_critic(root, catalog):
         "(narrow the goal, widen the scope to name specific paths, or merge "
         "with the page it collides with). Group the collisions once rather "
         "than reporting both sides. End with either `PLAN OK` or a one-line "
-        "count of the pages needing edits. Do not rewrite the catalog "
-        "yourself.",
+        "count of the pages needing edits, stated as a sample. Do not "
+        "rewrite the catalog yourself.",
         "",
         # Same reasoning as the page prompt's mandate: a target repo's scope
         # routinely includes operational scripts, and a review that starts
@@ -1823,9 +1831,44 @@ def render_plan_critic(root, catalog):
     return "\n".join(lines)
 
 
-def cmd_plan_critic(root):
-    print(render_plan_critic(root, load_catalog(root)))
+def write_prompt_out(root, text, out, what):
+    """Write a rendered prompt to a file and print the dispatch line.
+
+    Shared by `plan-critic` and `audit prompt`. Both render prompts far too
+    large to route through the orchestrator -- 49KB and 224KB respectively in
+    this repo -- and both cost that size twice when printed: once read in,
+    once pasted out, with the orchestrator gaining nothing from having read
+    it. Printing the exact dispatch wording matters as much as the file: left
+    to improvise it, a caller can hand the reviewer repo access it was never
+    meant to have."""
+    target = Path(out)
+    resolved = target if target.is_absolute() else (Path.cwd() / target)
+    try:
+        resolved.resolve().relative_to((root / AKASHIC_DIR).resolve())
+    except ValueError:
+        pass
+    else:
+        die(f"refusing to write a scratch prompt inside {AKASHIC_DIR}/: it "
+            "would be picked up as an uncovered file and committed with the "
+            "wiki. Write it somewhere temporary instead.")
+    try:
+        resolved.parent.mkdir(parents=True, exist_ok=True)
+        resolved.write_text(text, encoding="utf-8")
+    except OSError as exc:
+        die(f"could not write {resolved}: {exc}")
+    print(f"wrote {len(text.encode('utf-8'))} bytes to {resolved}")
+    print(f"Dispatch to one subagent, verbatim: \"Read the file at "
+          f"{resolved} in full and follow the instructions in it. Read "
+          f"nothing else.\"  ({what})")
     return 0
+
+
+def cmd_plan_critic(root, out=None):
+    text = render_plan_critic(root, load_catalog(root))
+    if out is None:
+        print(text)
+        return 0
+    return write_prompt_out(root, text, out, "plan review")
 
 
 # ---------------------------------------------------------------------- prompt
@@ -2143,6 +2186,14 @@ def render_audit_prompt(root, page_id):
         "contradict is not supported -- say so. Being unable to find fault is "
         "a finding too, but it is the rarer one.",
         "",
+        "**Do not judge attribution.** Because the labels hide filenames, you "
+        "cannot tell a correctly remembered filename from an invented one, so "
+        "a sentence saying a fact comes from a named file is out of scope for "
+        "you -- never report one as unsupported on those grounds. Every cited "
+        "path has already been proved to resolve to a real tracked file by a "
+        "separate deterministic gate. Judge only whether the content shown "
+        "supports what the sentence says about it.",
+        "",
     ]
     for section in page["sections"]:
         lines += [f"## Section: {section['title']}", "", "CLAIM:", ""]
@@ -2164,7 +2215,10 @@ def render_audit_prompt(root, page_id):
         "and use the words: **contradicted** (the evidence shows otherwise), "
         "**unsupported** (the evidence is silent), **overstated** (broader "
         "than what is shown, e.g. \"always\" against a conditional). Ignore "
-        "matters of style. End with the count of sections you found sound.",
+        "matters of style. End with the count of sections you found sound, "
+        "stated as one sample rather than a score -- another pass over the "
+        "same page will not return the same number, and a reader treating it "
+        "as a measurement will draw the wrong conclusion.",
         "",
         "Do not rewrite the documentation, and do not ask for more evidence "
         "-- the limited view is the method, not an oversight.",
@@ -2192,26 +2246,7 @@ def cmd_audit_prompt(root, page_id, out=None):
     # contract -- "you have no repository access", "do not ask for more
     # evidence" -- and never a sandbox. Telling it to read one file is the
     # same kind of instruction, at half the price.
-    target = Path(out)
-    resolved = target if target.is_absolute() else (Path.cwd() / target)
-    try:
-        inside = resolved.resolve().relative_to((root / AKASHIC_DIR).resolve())
-    except ValueError:
-        inside = None
-    if inside is not None:
-        die(f"refusing to write a scratch prompt inside {AKASHIC_DIR}/: it "
-            "would be picked up as an uncovered file and committed with the "
-            "wiki. Write it somewhere temporary instead.")
-    try:
-        resolved.parent.mkdir(parents=True, exist_ok=True)
-        resolved.write_text(text, encoding="utf-8")
-    except OSError as exc:
-        die(f"could not write {resolved}: {exc}")
-    print(f"wrote {len(text.encode('utf-8'))} bytes to {resolved}")
-    print("Dispatch to one subagent, verbatim: \"Read the file at "
-          f"{resolved} in full and follow the instructions in it. Read "
-          "nothing else.\"")
-    return 0
+    return write_prompt_out(root, text, out, "blind claim audit")
 
 
 # ------------------------------------------------------------------------ main
@@ -2245,9 +2280,13 @@ def main(argv=None):
     sub.add_parser(
         "plan-check",
         help="shape checks on the catalog before dispatching a fan-out")
-    sub.add_parser(
+    critic_parser = sub.add_parser(
         "plan-critic",
         help="render the adversarial plan-review prompt for the whole catalog")
+    critic_parser.add_argument(
+        "--out", metavar="PATH",
+        help="write the prompt to PATH and print a dispatch line instead, so "
+             "a large prompt does not pass through the orchestrator twice")
     audit_parser = sub.add_parser(
         "audit", help="on-demand claim audit: extract evidence, render a "
                       "blind judge prompt (never gates anchor)")
@@ -2276,6 +2315,8 @@ def main(argv=None):
         if args.audit_command == "extract":
             return cmd_audit_extract(root, args.page)
         return cmd_audit_prompt(root, args.page_id, out=args.out)
+    if args.command == "plan-critic":
+        return cmd_plan_critic(root, out=args.out)
     if args.command == "prompt":
         return cmd_prompt(root, args.page_id, update=args.update)
     if args.command == "bless":
@@ -2284,7 +2325,7 @@ def main(argv=None):
         return cmd_stale(root, check=args.check)
     command = {"scan": cmd_scan, "remap": cmd_remap,
                "plan-check": cmd_plan_check,
-               "plan-critic": cmd_plan_critic,
+
                "verify": cmd_verify, "anchor": cmd_anchor}[args.command]
     return command(root)
 
