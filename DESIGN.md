@@ -340,7 +340,9 @@ per-page file-dependency map; polling or manual trigger, never per-push webhooks
 
 1. `git cat-file -e <anchor>` — if the anchor is unreachable (force-push, shallow
    clone), say so and report **all pages stale** rather than guessing. The system may
-   waste a regeneration; it must never mark stale content fresh.
+   waste a regeneration; it must never mark stale content fresh. `anchor_state` splits
+   the two causes, because they need different fixes: `never_anchored` is a first run,
+   `anchor_unreachable` is a vanished commit.
 2. `git diff --name-status -M <anchor> HEAD`. Renames count as both old and new path.
 3. Intersect changed/deleted paths against each page's `files` (plus `scope` globs for
    added files) →
@@ -350,6 +352,7 @@ per-page file-dependency map; polling or manual trigger, never per-push webhooks
 | `stale` | a file the page depends on changed | regenerate (same Phase-2 contract); regenerated citations refresh `files` at anchor time, so renames and dependency drift self-heal |
 | `edited` | current page hash ≠ recorded `hash` → a human touched it | **never auto-overwrite**; skip and warn by default; regenerate only on explicit request, passing the human text as immutable context to preserve |
 | `orphaned` | every file the page documented is gone | auto-delete page + catalog entry (git is the backstop) — **unless also `edited`: then flag only; human text is never destroyed by automation** |
+| `planned` | a catalog page with no generated file on disk | regenerate it, or say the run is deliberately partial. Reported rather than an error because a partly generated wiki is a valid resume state — but `verify` and `anchor` both skip non-done pages, so without this bucket a generate run whose subagents died reports `verify: ok`, stamps an anchor and shows a clean `stale` |
 | `uncovered` | added files matching no page's scope∪files | if a coherent new module appeared, propose new catalog entries (visible as a catalog diff in review); otherwise note and ignore |
 
 4. The update run ends: regenerate stale pages → `verify` → `anchor` → print a

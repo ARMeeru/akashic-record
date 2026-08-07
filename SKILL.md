@@ -38,7 +38,8 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | Command | Does | Output |
 |---|---|---|
 | `scan` | filtered file list with line counts (planner input) | `lines<TAB>path` |
-| `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing` |
+| `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned` |
+| `stale --check` | same report, plus exit 1 when any bucket is non-empty | zero-token gate for a scheduled runner |
 | `verify` | check pages, citations, catalog invariants | errors, exit 1 if any |
 | `anchor` | record deps + hashes, stamp anchor commit, render TOC | summary |
 | `prompt <id>` | render the exact subagent prompt for one catalog page | text — dispatch it verbatim |
@@ -98,9 +99,13 @@ no commits, too many files — relay these to the user verbatim; they are action
    applicable) to the rendered text. Run `bless <id> --done` as each page's file
    lands — that flips `status` and nulls the hash in one atomic write.
    Interrupted? Just re-run: generate pages still `planned`.
-5. Run `verify`. Fix every error (repair citations or regenerate the page) and re-run
+5. Run `stale` and check the `planned` bucket is empty before going further. A page
+   still listed there is one a subagent never wrote: `verify` and `anchor` both skip
+   non-done pages, so nothing else in the pipeline will notice. Regenerate it or say
+   so explicitly; never anchor a run you have not confirmed finished.
+6. Run `verify`. Fix every error (repair citations or regenerate the page) and re-run
    until exit 0.
-6. Run `anchor`.
+7. Run `anchor`.
 7. Offer to (a) add `Repo wiki: .akashic/wiki/README.md (architecture + module docs with source citations)`
    to the repo's CLAUDE.md, and (b) commit `.akashic/` (`docs: generate repo wiki`).
 
@@ -136,7 +141,10 @@ no commits, too many files — relay these to the user verbatim; they are action
 
 ## Flow: update
 
-1. Run `stale`. If `anchor_reachable` is false, tell the user everything regenerates
+1. Run `stale`. If `anchor_reachable` is false, `anchor_state` says which of the two
+   causes it is — `never_anchored` (a first run; just anchor) or `anchor_unreachable`
+   (usually a shallow clone, or an anchor stamped on a commit a squash-merge
+   discarded). Tell the user everything regenerates
    and why (unreachable anchor — never guess staleness).
 2. Act per bucket:
    - `stale` → regenerate each page (page contract, plus: "This page existed; its

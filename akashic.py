@@ -529,9 +529,23 @@ def compute_stale(root):
     wiki = wiki_dir(root)
 
     report = {
-        "anchor": anchor, "head": head, "anchor_reachable": True, "dirty": dirty,
+        "anchor": anchor, "head": head, "anchor_reachable": True,
+        "anchor_state": "ok", "dirty": dirty,
         "stale": [], "edited": [], "orphaned": [], "uncovered": [], "missing": [],
+        "planned": [],
     }
+
+    # `missing` only ever inspects done pages, so it cannot see a page that was
+    # never generated at all -- and `verify`/`anchor` skip non-done pages too.
+    # Without this bucket a generate run whose subagents died reports
+    # "verify: ok", stamps an anchor and shows a clean `stale`, because a
+    # planned page is indistinguishable from one nobody attempted. Reported,
+    # not an error: a partly generated wiki is a valid resume state
+    # (DESIGN.md section 5), so strictness is opt-in via --check.
+    for page in catalog["pages"]:
+        if page.get("status") != "done" and not (
+                wiki / f"{page['id']}.md").is_file():
+            report["planned"].append(page["id"])
 
     # Edit detection is independent of the diff: hash of what exists now vs
     # the recorded hash of what the tool last wrote. Never guessed from git.
@@ -548,7 +562,13 @@ def compute_stale(root):
     if not reachable:
         # Never guess: an unreachable/absent anchor means everything regenerates.
         # Wasting a regen is acceptable; marking stale content fresh is not.
+        # The two causes need different fixes, so name them apart: a first run
+        # just needs `anchor`, whereas a vanished commit is usually a shallow
+        # clone (git cat-file -e exits 128 at depth 1) or an anchor stamped on
+        # a branch commit that a squash-merge discarded.
         report["anchor_reachable"] = False
+        report["anchor_state"] = "never_anchored" if not anchor \
+            else "anchor_unreachable"
         report["stale"] = [{"id": p["id"], "changed": []} for p in done]
         return report
 
@@ -596,8 +616,30 @@ def compute_stale(root):
     return report
 
 
-def cmd_stale(root):
-    print(json.dumps(compute_stale(root), indent=2))
+WORK_BUCKETS = ("stale", "edited", "orphaned", "uncovered", "missing", "planned")
+
+
+def cmd_stale(root, check=False):
+    report = compute_stale(root)
+    print(json.dumps(report, indent=2))
+    if not check:
+        return 0
+    # The zero-token gate a scheduled runner polls with: exit 1 means an LLM
+    # is worth invoking. `edited` counts even though nothing regenerates for
+    # it, because a human edit still needs surfacing to a human.
+    if any(report[bucket] for bucket in WORK_BUCKETS):
+        outstanding = ", ".join(
+            f"{bucket}={len(report[bucket])}"
+            for bucket in WORK_BUCKETS if report[bucket])
+        print(f"stale: work outstanding ({outstanding})", file=sys.stderr)
+        if report["anchor_state"] != "ok":
+            print(f"stale: {report['anchor_state']}: "
+                  + ("no anchor recorded yet; run anchor after generating"
+                     if report["anchor_state"] == "never_anchored" else
+                     "the recorded anchor commit is not in this clone -- "
+                     "usually a shallow clone, or an anchor stamped on a "
+                     "commit a squash-merge discarded"), file=sys.stderr)
+        return 1
     return 0
 
 
@@ -850,7 +892,12 @@ def main(argv=None):
                         help="run as if started in this directory (default: cwd)")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("scan", help="filtered file tree with line counts (planner input)")
-    sub.add_parser("stale", help="JSON report: stale/edited/orphaned/uncovered pages")
+    stale_parser = sub.add_parser(
+        "stale",
+        help="JSON report: stale/edited/orphaned/uncovered/missing/planned pages")
+    stale_parser.add_argument(
+        "--check", action="store_true",
+        help="exit 1 when any bucket is non-empty (zero-token gate for a runner)")
     sub.add_parser("verify", help="check pages, citations, and catalog invariants")
     sub.add_parser("anchor", help="record files/hashes, stamp anchor commit, render TOC")
     prompt_parser = sub.add_parser(
@@ -869,7 +916,9 @@ def main(argv=None):
         return cmd_prompt(root, args.page_id)
     if args.command == "bless":
         return cmd_bless(root, args.page_ids, mark_done=args.done)
-    command = {"scan": cmd_scan, "stale": cmd_stale,
+    if args.command == "stale":
+        return cmd_stale(root, check=args.check)
+    command = {"scan": cmd_scan,
                "verify": cmd_verify, "anchor": cmd_anchor}[args.command]
     return command(root)
 
