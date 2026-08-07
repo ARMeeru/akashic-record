@@ -30,7 +30,7 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:6c4c24c589866eb47c61b6ce0ecb13a8fd6378737cd6fe32813ac4bd9d2b78d1",
+      "hash": null,
       "frozen": false,
       "blobs": {
         "CLAUDE.md": "1cac932c9a47b08af9f79206ebdfa3928263af7d",
@@ -55,12 +55,25 @@
         "test_akashic.py"
       ],
       "status": "done",
-      "hash": "sha256:61a0128f3761cc784359e5ece8cd545768c221907f5987b4142047a1b97c6cb4",
+      "hash": null,
       "frozen": false,
       "blobs": {
         "akashic.py": "727acba102282bfd30100d35f158d8ab726529be",
         "test_akashic.py": "5fe448ab394b8e24a64da40f92d3b389e91805cd"
       }
+    },
+    {
+      "id": "maintenance-loop",
+      "title": "Maintenance Loop",
+      "parent": null,
+      "goal": "Document bin/akashic_loop.py: how a scheduled poll keeps a fleet of wikis fresh without supervision, why the zero-token stale --check gate is what makes scheduling affordable, the four verdicts a repo can get and why edited-only never reaches an LLM, the PR-not-commit rule, and the exit-code discipline that keeps a silent failure from fossilizing a wiki.",
+      "scope": [
+        "bin/*"
+      ],
+      "files": [],
+      "status": "done",
+      "hash": null,
+      "frozen": false
     },
     {
       "id": "skill-orchestration",
