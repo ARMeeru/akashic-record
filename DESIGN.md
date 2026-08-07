@@ -673,6 +673,19 @@ The prompt instructs the judge to **default to refuting** and to separate **cont
 `EVIDENCE: none` rather than dropped, because prose resting on nothing at all is the
 strongest available finding.
 
+**The blindness is a contract, not a sandbox — say so plainly.** The judge is a subagent
+with tools. Nothing prevents it opening the repository; it is *told* it has no access and
+told not to ask for more evidence, exactly as the page prompts are told to be read-only.
+Pretending otherwise costs real tokens for no added guarantee, because it makes handing
+over a path look unsafe when it is not. So `audit prompt <id> --out PATH` writes the
+prompt to a file and prints a dispatch line instead. Evidence spans are verbatim source,
+so these prompts are large — one page in this repo renders 224KB — and printing it costs
+that twice: once into the orchestrator's context, once into the judge's, with the
+orchestrator gaining nothing from having read it. Telling a subagent to read one named
+file is the same kind of instruction as telling it not to browse, at half the price. It
+refuses to write inside `.akashic/`, where a scratch file of that size would surface as
+`uncovered` and be committed with the wiki.
+
 The division of labor (§2) holds exactly: the script renders prompts and extracts bytes,
 and never calls an LLM; the LLM judges, and never computes a range.
 
