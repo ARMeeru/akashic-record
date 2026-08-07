@@ -588,6 +588,14 @@ state. In the normal flow the goal is edited in the working tree before regenera
 report as restated immediately after anchoring — breaking the tested post-anchor
 invariant.
 
+`--out PATH` applies to `prompt` too, for the same cost reason as the two judge prompts.
+This is the most-dispatched command — once per regenerated page, twelve times in one
+real run, where reading and re-pasting cost roughly 40k tokens. Unlike the audit there
+is no blindness to protect: a generation subagent needs repo access anyway. That is
+precisely why the flag belongs in the tool rather than in an orchestrator's judgment,
+since otherwise "handing over a path is safe here" has to be re-derived at every call
+site, and a rule that depends on being re-derived is a rule that eventually is not.
+
 **Regeneration context is rendered, never hand-appended.** `prompt <id> --update` adds
 what changed — the modified dependencies for a `stale` page, and for a `restated` one
 whether the goal was rewritten or files newly fell into scope. The update flow always
@@ -595,6 +603,12 @@ required that sentence and `prompt` never emitted it, so an orchestrator had to 
 `stale`'s JSON to the rendered prompt itself; on the first external run that meant a
 throwaway script across ten pages, which is exactly the hand-assembly §4 Phase 2 warns
 causes bugs. A rule that depends on being retyped is a rule that eventually is not.
+
+`--ids <bucket>` prints one page id per line and nothing else. Acting on a report means
+iterating ids, and without it every run hand-wrote a JSON-to-shell adapter — three so
+far, one of which hit zsh's refusal to word-split an unquoted expansion and passed twelve
+ids as a single string. An unknown bucket name exits 2 rather than printing nothing,
+because a typo that yields an empty loop is indistinguishable from "nothing to do".
 
 `akashic.py stale` (read-only, prints JSON):
 
