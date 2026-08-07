@@ -1852,6 +1852,37 @@ class TestAudit(RepoCase):
         self.assertEqual(ctx.exception.code, 2)
         self.assertFalse((root / ".akashic" / "scratch.md").exists())
 
+    def test_each_label_states_how_much_of_its_file_is_hidden(self):
+        """Without it, a claim that a file *lacks* something is unfalsifiable
+        from an excerpt and lands as unsupported regardless of truth -- which
+        scored a page about safety properties at 1 of 13 sections sound. A
+        line count is not a filename, so this leaks nothing the labelling
+        exists to withhold."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        text = akashic.render_audit_prompt(root, "index")
+        self.assertIn("[E1] lines 1-2 of a 6-line file", text)
+        self.assertIn("4 lines of this file are not shown", text)
+        self.assertNotIn("src/app.py", text, "still no filename")
+
+    def test_a_fully_cited_file_is_not_labelled_as_partly_hidden(self):
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nAll of it.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n",
+            source="def alpha():\n    return 1\n")
+        text = akashic.render_audit_prompt(root, "index")
+        self.assertIn("[E1] lines 1-2 of a 2-line file", text)
+        self.assertNotIn("are not shown", text)
+
+    def test_the_judge_is_told_an_excerpt_cannot_prove_absence(self):
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        text = akashic.render_audit_prompt(root, "index")
+        self.assertIn("An excerpt cannot prove absence", text)
+        self.assertIn("name what would", text)
+
     def test_the_judge_is_told_not_to_grade_attribution(self):
         """It cannot see filenames by construction, so it cannot tell a
         correctly remembered one from an invention -- and reported every

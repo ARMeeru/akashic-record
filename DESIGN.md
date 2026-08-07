@@ -736,6 +736,19 @@ file is the same kind of instruction as telling it not to browse, at half the pr
 refuses to write inside `.akashic/`, where a scratch file of that size would surface as
 `uncovered` and be committed with the wiki.
 
+**An excerpt cannot prove absence, and the judge is told how much it is missing.** Each
+label now states its file's total length and how many lines are hidden — `[E4] lines 47-57
+of a 210-line file`. Without that, any claim a page makes about a file *lacking* something
+(no name guard, no environment check, strictly read-only, no companion script) is
+unfalsifiable from an excerpt and lands as **unsupported** regardless of truth. It hit a
+page about operational scripts hardest, scoring it **1 of 13 sections sound**, because
+such a page is largely *about* safety properties and safety properties are absence claims.
+A line count is not a filename, so this leaks nothing the labelling exists to withhold.
+The judge is also told to name what *would* settle an absence claim rather than counting
+it against the page, and to grade a stated verification method — "confirmed read-only by
+grepping for every write verb" — on whether the method would establish the claim rather
+than on whether the excerpt does.
+
 **The judge must not grade attribution, and the prompt says so.** Withholding filenames
 has a cost that only showed up in the field: a page saying a fact comes from the README is
 making a claim the judge is structurally unable to check, and it reported every one of them
