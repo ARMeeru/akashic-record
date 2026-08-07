@@ -552,6 +552,14 @@ state. In the normal flow the goal is edited in the working tree before regenera
 report as restated immediately after anchoring — breaking the tested post-anchor
 invariant.
 
+**Regeneration context is rendered, never hand-appended.** `prompt <id> --update` adds
+what changed — the modified dependencies for a `stale` page, and for a `restated` one
+whether the goal was rewritten or files newly fell into scope. The update flow always
+required that sentence and `prompt` never emitted it, so an orchestrator had to join
+`stale`'s JSON to the rendered prompt itself; on the first external run that meant a
+throwaway script across ten pages, which is exactly the hand-assembly §4 Phase 2 warns
+causes bugs. A rule that depends on being retyped is a rule that eventually is not.
+
 `akashic.py stale` (read-only, prints JSON):
 
 1. `git cat-file -e <anchor>` — if the anchor is unreachable (force-push, shallow
