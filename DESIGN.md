@@ -126,6 +126,14 @@ Reparenting here is a one-line catalog edit; no file moves, ever.
   one `git ls-tree -r HEAD`. Blob shas are content hashes, so equality at HEAD proves a
   dependency is byte-identical **without needing the anchor commit to still exist**.
   That is what makes an unreachable anchor recoverable rather than catastrophic (§5).
+- `goal_hash` — sha256 of the `goal` the page was last generated from, recorded at
+  anchor time. Staleness answers "did the code move?"; nothing answered "did what we
+  asked of this page move?", and both plan gates (§4 Phases 1b/1c) produce goal and
+  scope edits as their primary output. Without this, a critic finding on a page that
+  happened not to be stale was written into the catalog and never reached the page —
+  6 of 16 findings on the first external run. **Absent field means say nothing**, the
+  same conservative direction `blobs` took, so catalogs written before it existed stay
+  quiet rather than reporting every page.
 - `status: planned | done` — the resume checkpoint. An interrupted generation resumes by
   generating pages still `planned`. No separate checkpoint state machine (Qoder's
   `recovery_checkpoint` reduced to one enum).
@@ -518,6 +526,31 @@ hook too, for any repo that is not clean. Under a scheduler stdout is a log file
 opens, and report-only is the mode an install is meant to start in, so a dry run that
 only printed would make a fleet needing work look exactly like a quiet one. A clean dry
 run stays silent: a daily banner that always arrives is a banner that stops being read.
+
+**`restated` — the brief changed, not the sources.** Orthogonal to every bucket below:
+a page can be both stale (its code moved) and restated (what we asked of it moved), and
+a reader deciding what to regenerate wants both. Two triggers, and only one needs
+anything recorded:
+
+- **A scope widened onto a file that already existed.** `compute_stale` only ever sees a
+  scope-matched file through `added_now`, files added *since* the anchor. A file
+  predating the anchor that newly falls into scope matched nothing at all, so the page
+  silently claimed a file it had never read — verified in a fixture: `stale`, `uncovered`
+  and `drifted` all empty. Detecting it needs no new field, because `anchor` already
+  records `files`: anything now in scope and absent from it is exactly that file.
+  Widening a scope is also the plan critic's commonest prescribed fix, which makes this
+  the half that mattered most.
+- **The goal was edited**, detected against the recorded `goal_hash`.
+
+**Rejected: reading the old goal from git.** The tempting move is §5's own anchor trick —
+the anchor commit is recorded, so read the prior catalog from it and store nothing. It
+cannot work, for a structural reason worth recording so it is not re-proposed: `anchor`
+stamps `anchor = HEAD` and *then* writes the catalog, so the catalog committed at the
+anchor commit can never contain that anchor; it is always the previous generation's
+state. In the normal flow the goal is edited in the working tree before regenerating, so
+`git show <anchor>:.akashic/catalog.json` returns the *old* goal and every page would
+report as restated immediately after anchoring — breaking the tested post-anchor
+invariant.
 
 `akashic.py stale` (read-only, prints JSON):
 

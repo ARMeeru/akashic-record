@@ -1012,6 +1012,53 @@ def fallback_stale(root, catalog, done, excludes):
     return stale
 
 
+def goal_hash(goal):
+    """Content identity of a page's brief, so a rewritten goal is detectable."""
+    return "sha256:" + hashlib.sha256(
+        (goal or "").strip().encode("utf-8", "surrogateescape")).hexdigest()
+
+
+def compute_restated(root, done, excludes, paths):
+    """Pages whose *brief* changed, as opposed to their sources.
+
+    Staleness answers "did the code move?". Nothing answered "did what we
+    asked of this page move?", and both plan gates shipped in M3 produce
+    exactly that as their primary output -- so a critic finding on a page
+    that happened not to be stale went nowhere. On the first external run
+    that was 6 of 16 findings, written into the catalog and unreachable.
+
+    Two ways a brief changes, and only one needs anything recorded:
+
+    - **scope widened onto a file that already existed.** `compute_stale`
+      only ever sees a scope-matched file via `added_now`, files added since
+      the anchor. A file predating the anchor that newly falls into scope
+      matches nothing, so the page silently claims a file it has never read.
+      Detecting it is free: `anchor` already stores `files`, so anything now
+      in scope and absent from it is exactly that file. Widening a scope is
+      also the plan critic's commonest prescribed fix, which makes this the
+      half that mattered most.
+    - **the goal was edited.** This one needs `goal_hash` recorded at anchor.
+      An absent field means say nothing, the same conservative direction
+      `blobs` took, so catalogs written before this existed stay quiet."""
+    out = []
+    for page in done:
+        recorded = set(page.get("files", []))
+        if not recorded:
+            continue  # never anchored; nothing to compare against
+        entry = {"id": page["id"]}
+        scope = page.get("scope", [])
+        widened = sorted(
+            set(expand_scope(root, scope, excludes, paths)) - recorded)
+        if widened:
+            entry["new_in_scope"] = widened
+        recorded_goal = page.get("goal_hash")
+        if recorded_goal and recorded_goal != goal_hash(page.get("goal")):
+            entry["goal_changed"] = True
+        if len(entry) > 1:
+            out.append(entry)
+    return out
+
+
 def compute_stale(root):
     """Read-only staleness report: which pages need what, per DESIGN.md section 5."""
     catalog = load_catalog(root)
@@ -1026,7 +1073,7 @@ def compute_stale(root):
         "anchor": anchor, "head": head, "anchor_reachable": True,
         "anchor_state": "ok", "dirty": dirty,
         "stale": [], "edited": [], "orphaned": [], "uncovered": [], "missing": [],
-        "planned": [], "drifted": [],
+        "planned": [], "drifted": [], "restated": [],
     }
 
     # `missing` only ever inspects done pages, so it cannot see a page that was
@@ -1084,6 +1131,9 @@ def compute_stale(root):
             and not matches_any(p, covered_scopes)
             and not is_noise(p, excludes)
             and is_binary(root / p) is not True)
+        # Computable without the anchor commit: both inputs are catalog data.
+        report["restated"] = compute_restated(
+            root, done, excludes, set(head_blobs))
         return report
 
     diff = git(root, "diff", "--name-status", "-M", "-z", anchor, "HEAD").stdout
@@ -1143,11 +1193,15 @@ def compute_stale(root):
         and not matches_any(p, covered_scopes)
         and not is_noise(p, excludes)
         and is_binary(root / p) is not True)
+    # Orthogonal to the buckets above: a page can be both stale (its sources
+    # moved) and restated (what we asked of it moved). Different causes, and
+    # a reader deciding what to regenerate wants to see both.
+    report["restated"] = compute_restated(root, done, excludes, head_files)
     return report
 
 
 WORK_BUCKETS = ("stale", "edited", "orphaned", "uncovered", "missing",
-                "planned", "drifted")
+                "planned", "drifted", "restated")
 
 
 def cmd_stale(root, check=False):
@@ -1250,6 +1304,10 @@ def anchor_repo(root):
         # file-level staleness, which is the conservative default.
         page["ranges"] = {path: sorted(spans)
                           for path, spans in sorted(ranges.items())}
+        # The brief this page was generated from. Without it a corrected goal
+        # sits in the catalog describing a page that does not match it, with
+        # nothing to say so -- see compute_restated.
+        page["goal_hash"] = goal_hash(page.get("goal"))
 
         # The recorded hash permanently means "what the tool wrote". A null
         # hash is the bless signal (the orchestrator sets it after writing a
