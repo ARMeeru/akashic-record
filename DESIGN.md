@@ -116,6 +116,12 @@ Reparenting here is a one-line catalog edit; no file moves, ever.
 - `files` — exact paths recorded at anchor time as `scope-matched ∪ cited` (union is
   deliberately conservative: over-staleness costs a cheap regen; under-staleness costs a
   wrong wiki).
+- `ranges` — `{path: [[start, end], ...]}` for every path the page cites *with line
+  numbers*, in anchor coordinates, recorded at anchor time. Ends are clamped to the
+  file's real length: `check_fragment` tolerates an end one past the last line (a file
+  ending in a newline displays a phantom empty line when read), and that phantom does
+  not exist in diff coordinates — unclamped, an append at EOF would intersect it and
+  stale every cite-to-end-of-file page on every append.
 - `blobs` — `{path: blob sha}` for every entry in `files`, recorded at anchor time from
   one `git ls-tree -r HEAD`. Blob shas are content hashes, so equality at HEAD proves a
   dependency is byte-identical **without needing the anchor commit to still exist**.
@@ -376,6 +382,20 @@ fossilizes the wiki, which is worse than having no loop at all.
 3. Intersect changed/deleted paths against each page's `files` (plus `scope` globs for
    added files) →
 
+   **Range-level staleness.** For a *modified* file the page cites with line numbers, the
+   question is sharper than "did this file change": `git diff -U0` hunks are already in
+   anchor coordinates, so overlap against the recorded `ranges` is integer math with no
+   fuzzy matching. A page cited at lines 10-40 no longer regenerates because line 900
+   changed. A zero-length hunk is an insertion after old line N and counts as touching
+   `[s, e]` only when `s <= N < e`, so an insertion immediately after the last cited line
+   leaves the page describing exactly what it described before.
+
+   Everything else stays file-level, deliberately: a file in scope but never cited has no
+   recorded range, a citation without line numbers claims the whole file, a pure rename
+   emits no hunks at all under `-M` (and its citations now dangle), a deletion's hunk
+   covers everything, and the blob fallback has no diff to intersect. The refinement only
+   ever *removes* a false positive; it never invents freshness.
+
 | Bucket | Meaning | Action (agent-side) |
 |---|---|---|
 | `stale` | a file the page depends on changed | regenerate (same Phase-2 contract); regenerated citations refresh `files` at anchor time, so renames and dependency drift self-heal |
@@ -395,13 +415,12 @@ timeless; temporal data belongs to git (`git log -- .akashic/wiki/<id>.md` is th
 changelog, the update report is the commit message).
 
 ```
-ponytail: v1 staleness is file-level (any change to a dependent file = stale) and edit
-detection is whole-page (one hash). Upgrade path when false-positive regens get
-annoying: (a) interval-intersect diff hunks against cited #Lstart-Lend ranges — the
-old-side hunk coordinates of `git diff anchor..HEAD` are already in anchor coordinates,
-so overlap is integer math, no fuzzy matching; (b) per-H2-section hashes so regeneration
+ponytail: (a) shipped — staleness is now range-level where a page cites line numbers,
+see "Range-level staleness" above. Remaining: (b) per-H2-section hashes so regeneration
 can preserve human-edited sections byte-for-byte instead of skipping the whole page.
-The on-disk format already records everything both upgrades need.
+Note the earlier claim that the on-disk format already records everything both upgrades
+need was wrong in both directions: (a) needed a `ranges` field, and (b) needs per-section
+hashes. Neither existed.
 ```
 
 ## 6. Agent consumption (no MCP server)

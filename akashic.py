@@ -52,6 +52,7 @@ SOURCES_RE = re.compile(r"^Sources:\s*(.*)$")
 # fails verification as "not tracked by git" instead of parsing correctly.
 LINK_RE = re.compile(r"\[(.*?)\]\((<[^<>]*>|(?:[^()\s]|\([^()\s]*\))+)\)")
 FRAGMENT_RE = re.compile(r"^L(\d+)(?:-L(\d+))?$")
+HUNK_RE = re.compile(r"^@@ -(\d+)(?:,(\d+))? \+")
 SCHEME_RE = re.compile(r"^[a-zA-Z][a-zA-Z0-9+.-]*://")
 VALID_STATUS = {"planned", "done"}
 
@@ -137,6 +138,15 @@ def load_catalog(root, required=True):
                 isinstance(k, str) and isinstance(v, str)
                 for k, v in blobs.items()):
             die(f"{rel}: pages[{i}].blobs must be an object of path -> sha")
+        ranges = page.get("ranges", {})
+        if not isinstance(ranges, dict) or not all(
+                isinstance(k, str) and isinstance(v, list)
+                and all(isinstance(span, list) and len(span) == 2
+                        and all(isinstance(n, int) for n in span)
+                        for span in v)
+                for k, v in ranges.items()):
+            die(f"{rel}: pages[{i}].ranges must be an object of "
+                "path -> [[start, end], ...]")
     return catalog
 
 
@@ -543,6 +553,86 @@ def parse_name_status(output):
     return modified, added, deleted, renames
 
 
+def citation_span(root, path, fragment):
+    """(start, end) for a citation fragment, clamped to the file's real length.
+
+    The clamp matters more than it looks. `check_fragment` tolerates an end one
+    past the last line, because a file ending in a newline displays one extra
+    empty line when read -- so recorded ends are routinely `total + 1`. That
+    phantom line does not exist in diff coordinates, and an append at EOF is an
+    insertion at old line `total`, which would intersect an unclamped range and
+    make every cite-to-end-of-file page stale on every append: precisely the
+    false positive this whole mechanism exists to remove."""
+    if not fragment:
+        return None
+    match = FRAGMENT_RE.match(fragment)
+    if not match:
+        return None
+    start = int(match.group(1))
+    end = int(match.group(2)) if match.group(2) else start
+    try:
+        total = line_count((root / path).read_bytes())
+    except OSError:
+        return None
+    end = min(end, total)
+    return (start, end) if total and start <= end else None
+
+
+def parse_diff_hunks(output):
+    """{old path: [(start, count), ...]} from `git diff -U0`.
+
+    Keyed by the OLD path because that is the coordinate system recorded ranges
+    live in; a rename's hunks arrive under `--- a/<old>`."""
+    hunks = {}
+    current = None
+    for line in output.split("\n"):
+        if line.startswith("--- "):
+            path = line[4:].strip()
+            current = None if path == "/dev/null" else (
+                path[2:] if path.startswith("a/") else path)
+        elif line.startswith("@@") and current:
+            match = HUNK_RE.match(line)
+            if match:
+                start = int(match.group(1))
+                count = 1 if match.group(2) is None else int(match.group(2))
+                hunks.setdefault(current, []).append((start, count))
+    return hunks
+
+
+def hunk_touches_ranges(hunks, spans):
+    """Does any hunk overlap any cited span? Both in anchor coordinates.
+
+    A zero-length hunk is an insertion after old line N, so it only counts as
+    touching [s, e] when it lands strictly inside the block (s <= N < e).
+    An insertion immediately after the last cited line leaves the cited text
+    exactly as it was, and the page keeps describing it correctly."""
+    for start, count in hunks:
+        for span_start, span_end in spans:
+            if count == 0:
+                if span_start <= start < span_end:
+                    return True
+            elif start <= span_end and start + count - 1 >= span_start:
+                return True
+    return False
+
+
+def touches_page(ranges, hunks_by_path, path):
+    """Did the change to `path` reach the lines this page cites?
+
+    Answers True whenever it cannot answer precisely, which is most of the
+    interesting cases: a file in scope but never cited has no recorded ranges;
+    a citation without line numbers claims the whole file; a pure rename
+    produces no hunks at all under -M, and a deletion's hunk covers everything.
+    Only a modification whose every hunk misses every cited span is dismissed,
+    and that is the false positive worth removing -- a page cited at lines
+    10-40 should not regenerate because someone edited line 900."""
+    spans = ranges.get(path)
+    hunks = hunks_by_path.get(path)
+    if not spans or not hunks:
+        return True
+    return hunk_touches_ranges(hunks, spans)
+
+
 def fallback_stale(root, catalog, done, excludes):
     """Staleness without a diff, using recorded blob shas as proof of identity.
 
@@ -653,6 +743,10 @@ def compute_stale(root):
         return report
 
     diff = git(root, "diff", "--name-status", "-M", "-z", anchor, "HEAD").stdout
+    # -U0 so a hunk covers only the lines that actually changed, letting a
+    # page ask "did this touch what I cite?" rather than "did this file move?"
+    hunks_by_path = parse_diff_hunks(
+        git(root, "diff", "-U0", "-M", anchor, "HEAD").stdout)
     modified, added, deleted, renames = parse_name_status(diff)
 
     # Wiki artifacts must never be staleness inputs: the wiki depending on
@@ -669,7 +763,9 @@ def compute_stale(root):
     for page in done:
         files = set(page.get("files", []))
         scope = page.get("scope", [])
-        hits = sorted(files & changed)
+        ranges = page.get("ranges") or {}
+        hits = sorted(p for p in files & changed
+                      if touches_page(ranges, hunks_by_path, p))
         hits += sorted(p for p in added_now
                        if p not in files and scope and matches_any(p, scope))
         # Orphaned only when everything documented is gone AND nothing in the
@@ -773,10 +869,15 @@ def anchor_repo(root):
         body = page_file.read_text(encoding="utf-8", errors="replace")
         _, citations, _, _ = parse_page_links(body)
         cited = set()
+        ranges = {}
         for _, raw in citations:
-            path, _, err = resolve_citation(root, page_file, raw)
-            if not err and not path.startswith(AKASHIC_DIR + "/"):
-                cited.add(path)
+            path, fragment, err = resolve_citation(root, page_file, raw)
+            if err or path.startswith(AKASHIC_DIR + "/"):
+                continue
+            cited.add(path)
+            span = citation_span(root, path, fragment)
+            if span:
+                ranges.setdefault(path, []).append(list(span))
         scope = page.get("scope", [])
         in_scope = {p for p in tracked if scope and matches_any(p, scope)}
         page["files"] = sorted(cited | in_scope)
@@ -786,6 +887,13 @@ def anchor_repo(root):
         # means "cannot be proven fresh", which is the safe direction.
         page["blobs"] = {path: head_blobs[path] for path in page["files"]
                          if path in head_blobs}
+        # Which lines the page actually leans on, in anchor coordinates, so a
+        # later diff can ask whether a change touched them rather than just
+        # whether the file moved. Only cited fragments produce a range: a file
+        # in scope but never cited, or cited without line numbers, keeps
+        # file-level staleness, which is the conservative default.
+        page["ranges"] = {path: sorted(spans)
+                          for path, spans in sorted(ranges.items())}
 
         # The recorded hash permanently means "what the tool wrote". A null
         # hash is the bless signal (the orchestrator sets it after writing a

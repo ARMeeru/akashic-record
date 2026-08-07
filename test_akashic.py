@@ -199,6 +199,77 @@ class TestStale(RepoCase):
         self.assertEqual(self.run_stale_check(root), 1,
                          "a stale page must wake the runner")
 
+    def ranged_repo(self):
+        """A page citing lines 5-10 of a 40-line file, properly anchored."""
+        repo = self.make_repo()
+        self.write(repo, "src/app.py", "".join(f"line {n}\n" for n in range(1, 41)))
+        self.commit(repo)
+        self.write(repo, ".akashic/wiki/a.md",
+                   "# A\n\nSources: "
+                   "[src/app.py:5-10](../../src/app.py#L5-L10)\n")
+        self.catalog(repo, [self.page("a", scope=["src/*"])],
+                     anchor=self.head(repo))
+        self.commit(repo, "wiki")
+        root = akashic.repo_root(repo)
+        akashic.anchor_repo(root)
+        self.assertEqual(
+            akashic.load_catalog(root)["pages"][0]["ranges"],
+            {"src/app.py": [[5, 10]]},
+            "anchor must record the cited span in anchor coordinates")
+        return repo, root
+
+    def test_change_outside_the_cited_lines_is_not_stale(self):
+        """The false positive this mechanism exists to remove: a page citing
+        lines 5-10 should not regenerate because line 35 changed."""
+        repo, root = self.ranged_repo()
+        self.write(repo, "src/app.py",
+                   "".join(("line 35 rewritten\n" if n == 35 else f"line {n}\n")
+                           for n in range(1, 41)))
+        self.commit(repo, "edit a line the page does not cite")
+        self.assertEqual(akashic.compute_stale(root)["stale"], [])
+
+    def test_change_inside_the_cited_lines_is_stale(self):
+        repo, root = self.ranged_repo()
+        self.write(repo, "src/app.py",
+                   "".join(("line 7 rewritten\n" if n == 7 else f"line {n}\n")
+                           for n in range(1, 41)))
+        self.commit(repo, "edit a cited line")
+        self.assertEqual([s["id"] for s in akashic.compute_stale(root)["stale"]],
+                         ["a"])
+
+    def test_append_at_eof_does_not_stale_a_page(self):
+        """Recorded ends are routinely one past the last line, because a file
+        ending in a newline displays a phantom empty line. Unclamped, an append
+        at EOF would intersect it and stale every cite-to-end page."""
+        repo, root = self.ranged_repo()
+        with open(repo / "src/app.py", "a", encoding="utf-8") as fh:
+            fh.write("line 41\n")
+        self.commit(repo, "append")
+        self.assertEqual(akashic.compute_stale(root)["stale"], [])
+
+    def test_pure_rename_stays_file_level_stale(self):
+        """A 100%-similarity rename emits no hunks at all, so range logic can
+        say nothing about it and the page must stay stale: its citations now
+        point at a path that no longer exists."""
+        repo, root = self.ranged_repo()
+        sh(repo, "git", "mv", "src/app.py", "src/renamed.py")
+        self.commit(repo, "rename")
+        self.assertEqual([s["id"] for s in akashic.compute_stale(root)["stale"]],
+                         ["a"])
+
+    def test_uncited_file_in_scope_keeps_file_level_staleness(self):
+        repo, root = self.ranged_repo()
+        self.write(repo, "src/helper.py", "helper\n")
+        self.commit(repo, "add an in-scope file the page never cites")
+        akashic.anchor_repo(root)
+        self.assertNotIn("src/helper.py",
+                         akashic.load_catalog(root)["pages"][0]["ranges"],
+                         "a file with no cited fragment records no range")
+        self.write(repo, "src/helper.py", "helper changed\n")
+        self.commit(repo, "change it")
+        self.assertEqual([s["id"] for s in akashic.compute_stale(root)["stale"]],
+                         ["a"], "no recorded range means file-level staleness")
+
     def anchored_repo_with_lost_anchor(self):
         """Anchor properly, then point the catalog at a commit this clone does
         not have -- the shape a squash-merged runner PR or a shallow clone
