@@ -30,7 +30,7 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:8f8dbe1e16126029f0da203feba71f91a5d0cea706954b809dc4c7d3b6116946",
+      "hash": null,
       "frozen": false,
       "blobs": {
         "CLAUDE.md": "b5204fd69285799e0bf77d64a0b9290098f5fc92",
