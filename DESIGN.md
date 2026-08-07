@@ -598,6 +598,21 @@ opens, and report-only is the mode an install is meant to start in, so a dry run
 only printed would make a fleet needing work look exactly like a quiet one. A clean dry
 run stays silent: a daily banner that always arrives is a banner that stops being read.
 
+**`unblessed` — a page was written and never accepted.** `planned` reports a page nobody
+attempted, and it tests for the *absence* of the page file. Every other bucket iterates
+`done` pages. Between the two sat a hole: a non-done page whose file exists belonged to no
+bucket at all, so `stale --check` exited 0 on it and a runner saw a clean wiki. That is the
+likelier half of the very failure `planned` was added to close — a generation subagent's
+`Write` lands, then the session dies before `bless` — and one field run lost 9 of 14
+regenerations exactly that way.
+
+Kept separate from `planned` rather than merged, because the remedies differ and one of
+them destroys work. `planned` means generate the page. `unblessed` means read what is
+already there and run `bless <id> --done`, or regenerate deliberately. Folding the second
+into the first would prescribe regeneration for a page that already has a body, discarding
+it unread — and the whole point of hash-based edit detection is that the tool never
+overwrites prose it did not write.
+
 **`restated` — the brief changed, not the sources.** Orthogonal to every bucket below:
 a page can be both stale (its code moved) and restated (what we asked of it moved), and
 a reader deciding what to regenerate wants both. Two triggers, and only one needs

@@ -1114,7 +1114,7 @@ def compute_stale(root):
         "anchor": anchor, "head": head, "anchor_reachable": True,
         "anchor_state": "ok", "dirty": dirty,
         "stale": [], "edited": [], "orphaned": [], "uncovered": [], "missing": [],
-        "planned": [], "drifted": [], "restated": [],
+        "planned": [], "drifted": [], "restated": [], "unblessed": [],
     }
 
     # `missing` only ever inspects done pages, so it cannot see a page that was
@@ -1124,10 +1124,27 @@ def compute_stale(root):
     # planned page is indistinguishable from one nobody attempted. Reported,
     # not an error: a partly generated wiki is a valid resume state
     # (DESIGN.md section 5), so strictness is opt-in via --check.
+    #
+    # Split in two, because the file-exists half was invisible in both
+    # directions. `planned` required the file to be absent while every other
+    # bucket iterates done pages, so a page whose generation subagent wrote
+    # its file and then died before `bless` landed in no bucket at all and
+    # `stale --check` exited 0 on it. That is the likelier half of exactly the
+    # failure this bucket was added to close -- one field run lost 9 of 14
+    # regenerations to a session limit, each of them mid-write.
+    #
+    # They are not merged, because the remedies differ and one of them
+    # destroys work. `planned` means nobody attempted the page: generate it.
+    # `unblessed` means a page was written and never accepted: read it and
+    # run `bless <id> --done`, or regenerate deliberately. Folding the second
+    # into the first would prescribe regeneration for a page that already has
+    # a body, discarding it unread.
     for page in catalog["pages"]:
-        if page.get("status") != "done" and not (
-                wiki / f"{page['id']}.md").is_file():
-            report["planned"].append(page["id"])
+        if page.get("status") == "done":
+            continue
+        bucket = "planned" if not (wiki / f"{page['id']}.md").is_file() \
+            else "unblessed"
+        report[bucket].append(page["id"])
 
     # Edit detection is independent of the diff: hash of what exists now vs
     # the recorded hash of what the tool last wrote. Never guessed from git.
@@ -1242,7 +1259,7 @@ def compute_stale(root):
 
 
 WORK_BUCKETS = ("stale", "edited", "orphaned", "uncovered", "missing",
-                "planned", "drifted", "restated")
+                "planned", "drifted", "restated", "unblessed")
 
 
 def bucket_ids(report, bucket):
