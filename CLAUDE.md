@@ -49,6 +49,7 @@ Invariants that shape most of the code:
 
 - **Page ids are frozen forever** and slug-validated at catalog load in every command — an id is a path component, so a non-slug id is a traversal vector.
 - **`hash` permanently means "what the tool last wrote."** `null` is the bless signal, set immediately after (re)generating a page; `anchor` records a new hash only for null/unchanged pages. A changed body under a non-null hash is a human edit — never re-hash it (that would launder the `edited` marker) and never overwrite the page.
+- **An unreachable anchor is recoverable, not fatal.** `anchor` records a `blobs` map (path -> blob sha) per page; when the anchor commit is gone, a page is provably fresh iff every recorded blob is unchanged at HEAD *and* its scope adds nothing new. Byte-equality is proof, so this never marks stale content fresh.
 - **Citations resolve against git's tracked-path set, not the filesystem.** An untracked or wrong-case path can never appear in an anchor→HEAD diff, so it would make the page permanently fresh. Resolved paths must also realpath inside the repo root (traversal guard).
 - **A citation's end line may exceed the real line count by exactly one** — Claude's Read tool shows one extra empty line for files ending in a trailing newline; `check_fragment` tolerates that specific +1 and rejects anything further.
 - **`.akashic/` paths are never staleness inputs or recorded dependencies** — the wiki must not depend on itself.

@@ -197,6 +197,68 @@ class TestStale(RepoCase):
         self.assertEqual(self.run_stale_check(root), 1,
                          "a stale page must wake the runner")
 
+    def anchored_repo_with_lost_anchor(self):
+        """Anchor properly, then point the catalog at a commit this clone does
+        not have -- the shape a squash-merged runner PR or a shallow clone
+        produces every cycle."""
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.write(repo, "f2.py", "two\n")
+        self.commit(repo)
+        self.write(repo, ".akashic/wiki/a.md",
+                   "# A\n\nSources: [f1](../../f1.py), [f2](../../f2.py)\n")
+        self.catalog(repo, [self.page("a", scope=["*.py"])],
+                     anchor=self.head(repo))
+        self.commit(repo, "wiki")
+        root = akashic.repo_root(repo)
+        akashic.anchor_repo(root)
+        catalog = akashic.load_catalog(root)
+        self.assertTrue(catalog["pages"][0]["blobs"],
+                        "anchor must record dependency blob shas")
+        catalog["anchor"] = "0" * 40
+        akashic.save_catalog(root, catalog)
+        return repo, root
+
+    def test_unreachable_anchor_proves_freshness_from_blobs(self):
+        """Blob shas are content hashes, so equality at HEAD is proof the file
+        is byte-identical even though the anchor commit is gone. Without this
+        a squash-merging runner regenerates every page, every cycle, forever."""
+        repo, root = self.anchored_repo_with_lost_anchor()
+        report = akashic.compute_stale(root)
+        self.assertFalse(report["anchor_reachable"])
+        self.assertEqual(report["anchor_state"], "anchor_unreachable")
+        self.assertEqual(report["stale"], [],
+                         "unchanged content is provably fresh without the anchor")
+
+        self.write(repo, "f1.py", "one changed\n")
+        self.commit(repo, "touch a dependency")
+        self.assertEqual([s["id"] for s in akashic.compute_stale(root)["stale"]],
+                         ["a"], "a changed blob must still mark the page stale")
+
+    def test_unreachable_anchor_still_catches_new_in_scope_files(self):
+        """Blob equality can only speak about paths already recorded, so a new
+        file matching the page's scope is invisible to it. The scope-subset
+        half of the check is what keeps a new module from being declared
+        documented."""
+        repo, root = self.anchored_repo_with_lost_anchor()
+        self.write(repo, "f3.py", "brand new module\n")
+        self.commit(repo, "add a file inside the page's scope")
+
+        report = akashic.compute_stale(root)
+        self.assertEqual([s["id"] for s in report["stale"]], ["a"],
+                         "a new in-scope file must not be declared fresh")
+
+    def test_fallback_never_trusts_a_page_without_recorded_blobs(self):
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        self.write(repo, ".akashic/wiki/a.md", "# A\n\nSources: [f1](../../f1.py)\n")
+        self.catalog(repo, [self.page("a", files=["f1.py"], scope=["f1.py"])],
+                     anchor="0" * 40)
+        report = akashic.compute_stale(akashic.repo_root(repo))
+        self.assertEqual([s["id"] for s in report["stale"]], ["a"],
+                         "no recorded blobs means freshness cannot be proven")
+
     def run_stale_check(self, root):
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):

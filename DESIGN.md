@@ -116,6 +116,10 @@ Reparenting here is a one-line catalog edit; no file moves, ever.
 - `files` — exact paths recorded at anchor time as `scope-matched ∪ cited` (union is
   deliberately conservative: over-staleness costs a cheap regen; under-staleness costs a
   wrong wiki).
+- `blobs` — `{path: blob sha}` for every entry in `files`, recorded at anchor time from
+  one `git ls-tree -r HEAD`. Blob shas are content hashes, so equality at HEAD proves a
+  dependency is byte-identical **without needing the anchor commit to still exist**.
+  That is what makes an unreachable anchor recoverable rather than catastrophic (§5).
 - `status: planned | done` — the resume checkpoint. An interrupted generation resumes by
   generating pages still `planned`. No separate checkpoint state machine (Qoder's
   `recovery_checkpoint` reduced to one enum).
@@ -343,6 +347,19 @@ per-page file-dependency map; polling or manual trigger, never per-push webhooks
    waste a regeneration; it must never mark stale content fresh. `anchor_state` splits
    the two causes, because they need different fixes: `never_anchored` is a first run,
    `anchor_unreachable` is a vanished commit.
+
+   **Blob fallback.** Reporting *all* pages stale is the honest answer only when nothing
+   is known, and the recorded `blobs` change that: a page is provably fresh when every
+   recorded dependency still hashes to the same blob at HEAD **and** its scope expanded
+   against HEAD adds nothing beyond the files already recorded. The second half is not
+   redundant — blob equality can only speak about paths already recorded, so a new file
+   inside the page's scope is invisible to it. Byte-equality is proof rather than a
+   guess, so this narrows the blast radius without weakening "never mark stale content
+   fresh"; a page with no recorded blobs is never provably fresh. It matters because the
+   anchor an automated run stamps lives on a branch commit, and squash-merging that
+   run's own PR discards it — without the fallback the loop regenerates everything on
+   every cycle, permanently. Coverage in this mode is computed over the whole HEAD tree
+   rather than a diff, since there is no "added since" to work from.
 2. `git diff --name-status -M <anchor> HEAD`. Renames count as both old and new path.
 3. Intersect changed/deleted paths against each page's `files` (plus `scope` globs for
    added files) →

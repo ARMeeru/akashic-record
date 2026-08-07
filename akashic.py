@@ -132,6 +132,11 @@ def load_catalog(root, required=True):
                 die(f"{rel}: pages[{i}].{key} must be a list of strings")
         if page.get("parent") is not None and not isinstance(page["parent"], str):
             die(f"{rel}: pages[{i}].parent must be a string or null")
+        blobs = page.get("blobs", {})
+        if not isinstance(blobs, dict) or not all(
+                isinstance(k, str) and isinstance(v, str)
+                for k, v in blobs.items()):
+            die(f"{rel}: pages[{i}].blobs must be an object of path -> sha")
     return catalog
 
 
@@ -197,6 +202,25 @@ def tracked_files(root, at_head=False):
     else:
         out = git(root, "ls-files", "-z").stdout
     return [p for p in out.split("\0") if p]
+
+
+def tracked_blobs(root):
+    """{path: blob sha} for every file at HEAD, from one ls-tree call.
+
+    Content identity that survives losing the anchor commit: blob shas are
+    content hashes, so comparing them proves a file is byte-identical without
+    needing the old commit to still exist. One subprocess rather than a
+    rev-parse per file -- a page can depend on a hundred paths."""
+    out = git(root, "ls-tree", "-r", "-z", "HEAD").stdout
+    blobs = {}
+    for entry in out.split("\0"):
+        if not entry:
+            continue
+        meta, _, path = entry.partition("\t")
+        parts = meta.split()
+        if len(parts) >= 3 and parts[1] == "blob" and path:
+            blobs[path] = parts[2]
+    return blobs
 
 
 def normalize_body(data):
@@ -519,6 +543,41 @@ def parse_name_status(output):
     return modified, added, deleted, renames
 
 
+def fallback_stale(root, catalog, done, excludes):
+    """Staleness without a diff, using recorded blob shas as proof of identity.
+
+    A page is provably fresh only when both hold:
+
+      (a) every dependency it recorded still hashes to the same blob at HEAD --
+          a deleted or modified file breaks this immediately; and
+      (b) nothing new has entered its scope, i.e. the scope expanded against
+          HEAD is a subset of the files already recorded.
+
+    (b) is not redundant. Blob comparison can only speak about paths already
+    recorded, so a brand-new file matching the page's scope globs is invisible
+    to it -- exactly the case the glob half of the reachable path exists to
+    catch. Without (b) a page would be declared fresh while a new module sat
+    undocumented inside its own scope.
+
+    A page with no recorded blobs (written before this field existed, or never
+    anchored) is never provably fresh, so it stays stale. Cheaper to
+    regenerate one page than to invent freshness."""
+    head_blobs = tracked_blobs(root)
+    head_files = [p for p in head_blobs
+                  if not p.startswith(AKASHIC_DIR + "/")]
+    stale = []
+    for page in done:
+        recorded_blobs = page.get("blobs") or {}
+        recorded_files = set(page.get("files", []))
+        unchanged = bool(recorded_blobs) and all(
+            head_blobs.get(path) == sha for path, sha in recorded_blobs.items())
+        in_scope = set(expand_scope(root, page.get("scope", []), excludes,
+                                    paths=head_files))
+        if not (unchanged and in_scope <= recorded_files):
+            stale.append({"id": page["id"], "changed": []})
+    return stale
+
+
 def compute_stale(root):
     """Read-only staleness report: which pages need what, per DESIGN.md section 5."""
     catalog = load_catalog(root)
@@ -527,6 +586,7 @@ def compute_stale(root):
     dirty = bool(git(root, "status", "--porcelain").stdout.strip())
     done = [p for p in catalog["pages"] if p.get("status") == "done"]
     wiki = wiki_dir(root)
+    excludes = catalog.get("exclude", [])
 
     report = {
         "anchor": anchor, "head": head, "anchor_reachable": True,
@@ -560,16 +620,36 @@ def compute_stale(root):
         root, "cat-file", "-e", f"{anchor}^{{commit}}", check=False
     ).returncode == 0
     if not reachable:
-        # Never guess: an unreachable/absent anchor means everything regenerates.
-        # Wasting a regen is acceptable; marking stale content fresh is not.
+        # No diff is possible, but the recorded blob shas still prove content
+        # identity: they are content hashes, so equality at HEAD means the file
+        # is byte-identical whether or not the anchor commit survives. That is
+        # proof, not a guess, which is why it may mark a page fresh here.
+        #
         # The two causes need different fixes, so name them apart: a first run
         # just needs `anchor`, whereas a vanished commit is usually a shallow
         # clone (git cat-file -e exits 128 at depth 1) or an anchor stamped on
-        # a branch commit that a squash-merge discarded.
+        # a branch commit that a squash-merge discarded -- the shape a runner
+        # hits every cycle once its own PR is squash-merged, which without this
+        # fallback means a full regeneration of every page, forever.
         report["anchor_reachable"] = False
         report["anchor_state"] = "never_anchored" if not anchor \
             else "anchor_unreachable"
-        report["stale"] = [{"id": p["id"], "changed": []} for p in done]
+        report["stale"] = fallback_stale(root, catalog, done, excludes)
+        # Coverage has no "added since the anchor" to work from here, so it is
+        # computed over the whole HEAD tree instead of the diff -- a wider
+        # question than usual, answered honestly rather than skipped.
+        head_blobs = tracked_blobs(root)
+        covered_files, covered_scopes = set(), []
+        for page in catalog["pages"]:
+            covered_files.update(page.get("files", []))
+            covered_scopes.extend(page.get("scope", []))
+        report["uncovered"] = sorted(
+            p for p in head_blobs
+            if not p.startswith(AKASHIC_DIR + "/")
+            and p not in covered_files
+            and not matches_any(p, covered_scopes)
+            and not is_noise(p, excludes)
+            and is_binary(root / p) is not True)
         return report
 
     diff = git(root, "diff", "--name-status", "-M", "-z", anchor, "HEAD").stdout
@@ -606,7 +686,6 @@ def compute_stale(root):
     for page in catalog["pages"]:
         covered_files.update(page.get("files", []))
         covered_scopes.extend(page.get("scope", []))
-    excludes = catalog.get("exclude", [])
     report["uncovered"] = sorted(
         p for p in added_now
         if p not in covered_files
@@ -683,6 +762,7 @@ def anchor_repo(root):
     # .akashic/ files can never be page dependencies (see compute_stale).
     tracked = [p for p in tracked_files(root)
                if not p.startswith(AKASHIC_DIR + "/")]
+    head_blobs = tracked_blobs(root)
     wiki = wiki_dir(root)
 
     anchored = 0
@@ -700,6 +780,12 @@ def anchor_repo(root):
         scope = page.get("scope", [])
         in_scope = {p for p in tracked if scope and matches_any(p, scope)}
         page["files"] = sorted(cited | in_scope)
+        # Content identity for each dependency, so freshness survives losing
+        # the anchor commit (see fallback_stale). A dependency that is not at
+        # HEAD -- staged but uncommitted, say -- is simply absent, and absence
+        # means "cannot be proven fresh", which is the safe direction.
+        page["blobs"] = {path: head_blobs[path] for path in page["files"]
+                         if path in head_blobs}
 
         # The recorded hash permanently means "what the tool wrote". A null
         # hash is the bless signal (the orchestrator sets it after writing a
@@ -793,7 +879,7 @@ CONTEXT_DOC_NAMES = [
 ]
 
 
-def expand_scope(root, scope, excludes=()):
+def expand_scope(root, scope, excludes=(), paths=None):
     """Scope-matched tracked files, filtered exactly as `scan` filters the
     planner's view. Sharing one definition of the citable universe is the
     point: otherwise `exclude` globs, lockfiles, minified assets, and
@@ -801,7 +887,8 @@ def expand_scope(root, scope, excludes=()):
     these files -- this is also the ENTIRE set you may cite" list, and
     `verify` accepts citations to them. A `scope` glob must not be able to
     re-admit what the catalog excluded."""
-    return sorted(p for p in tracked_files(root)
+    candidates = tracked_files(root) if paths is None else paths
+    return sorted(p for p in candidates
                   if scope and matches_any(p, scope)
                   and not is_noise(p, excludes)
                   and is_binary(root / p) is False)
