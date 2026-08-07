@@ -21,13 +21,15 @@ Sources: [SKILL.md:13-30](../../SKILL.md#L13-L30)
 
 ## The helper script
 
-All deterministic operations go through the helper, invoked as `python3 "<skill's base directory>/akashic.py" -C <target-repo> <command>`. Seven commands exist: `scan` (filtered file list with line counts, the planner's input, as `lines<TAB>path`), `stale` (JSON staleness report with `stale/edited/orphaned/uncovered/missing` buckets), `verify` (checks pages, citations, and catalog invariants, exiting 1 on any error), `anchor` (records deps and hashes, stamps the anchor commit, renders the TOC), `prompt <id>` (renders the exact subagent prompt for one catalog page, as text meant to be dispatched verbatim), and `bless <id>...` (marks pages as tool-written by nulling their hash, with `--done` also flipping `status`). `remap` shifts citations whose lines moved without their content changing, with no LLM involved. `stale` also takes `--check`, which repeats the report and exits 1 when any bucket is non-empty — the zero-token gate a scheduled runner polls with. Exit codes are 0 for ok, 1 for verification failure, and 2 for precondition or usage errors (no git repo, no commits, too many files) — precondition errors are relayed to the user verbatim because they are actionable. The internals of these commands are covered in [Deterministic Core](./deterministic-core.md).
+All deterministic operations go through the helper, invoked as `python3 "<skill's base directory>/akashic.py" -C <target-repo> <command>`. Seven commands exist: `scan` (a `# N files, M lines` header followed by one `lines<TAB>path` entry per file, the planner's input), `stale` (JSON staleness report with `stale/edited/orphaned/uncovered/missing` buckets), `verify` (checks pages, citations, and catalog invariants, exiting 1 on any error), `anchor` (records deps and hashes, stamps the anchor commit, renders the TOC), `prompt <id>` (renders the exact subagent prompt for one catalog page, as text meant to be dispatched verbatim), and `bless <id>...` (marks pages as tool-written by nulling their hash, with `--done` also flipping `status`). `remap` shifts citations whose lines moved without their content changing, with no LLM involved. `stale` also takes `--check`, which repeats the report and exits 1 when any bucket is non-empty — the zero-token gate a scheduled runner polls with. Exit codes are 0 for ok, 1 for verification failure, and 2 for precondition or usage errors (no git repo, no commits, too many files) — precondition errors are relayed to the user verbatim because they are actionable. The internals of these commands are covered in [Deterministic Core](./deterministic-core.md).
 
 Sources: [SKILL.md:32-50](../../SKILL.md#L32-L50)
 
 ## Flow: generate (first run)
 
 The first run starts with `scan` (stopping on precondition errors), then reads the repo's README, `.akashic/notes.md` if present, and any pre-existing agent-guidance docs on disk (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `GEMINI.md`, `.github/copilot-instructions.md`, and similar) for domain and convention context — plus a tokensave MCP or `graphify-out/` graph when available, otherwise scan output and targeted Grep. Those context docs inform how a page's `goal` is written but never belong in a page's `scope`: `scope` is the citable dependency set, and local-only guidance files are routinely excluded from the shared repo on purpose, not by mistake. `scan`'s output defines the entire citable universe — a file read only for context that doesn't appear in scan cannot be cited by any page.
+
+The planning rules now also state the glob dialect, because getting it wrong fails silently: `scope` and `exclude` are fnmatch rather than gitignore, `*` crosses `/` so `dir/*` claims a whole subtree, a slash-free pattern matches basenames at any depth, `**/` also matches at the root, `[` is literal so framework route paths are written as they appear, and there is no negation — two unavoidably overlapping scopes are separated by their pages' distinct goals, not by the patterns.
 
 The skill then writes `.akashic/catalog.json` with planned page entries under fixed planning rules: 8–30 pages scaled to repo size; `index` first; parents before children in array order; kebab-case ids that are frozen forever (retitle freely, never re-id); every page a distinct `goal` and non-empty `scope`; C/C++ header/impl pairs share a scope; build files belong to the index page's scope; a scope matching more than ~200 files means the page should be split.
 
@@ -60,7 +62,7 @@ sequenceDiagram
     A-->>O: deps and hashes recorded, TOC rendered
 ```
 
-Sources: [SKILL.md:52-111](../../SKILL.md#L52-L111)
+Sources: [SKILL.md:52-122](../../SKILL.md#L52-L122)
 
 ## Page contract
 
@@ -72,7 +74,7 @@ The rendered prompt ends with a read-only mandate — read and cite, never execu
 
 Diagrams are plain Mermaid (no style directives), used only where they genuinely clarify, each with a `Sources:` line directly beneath. Sibling pages are cross-referenced as inline markdown links pointing at a sibling page's `<id>.md` file, cite-or-omit applies ("not documented here" beats invention), and the last line stamps the generating commit and date. Prose language is configurable, but structural tokens like `Sources:` and heading syntax stay as specified regardless of language.
 
-Sources: [SKILL.md:113-141](../../SKILL.md#L113-L141)
+Sources: [SKILL.md:124-152](../../SKILL.md#L124-L152)
 
 ## Flow: update
 
@@ -87,18 +89,18 @@ An update begins with `stale`. If the report says `anchor_reachable` is false, `
 
 The flow closes with `verify` → fix → `anchor`, and a per-page report of what changed and what was done, phrased so it can serve as the body of the wiki commit message.
 
-Sources: [SKILL.md:143-169](../../SKILL.md#L143-L169)
+Sources: [SKILL.md:154-180](../../SKILL.md#L154-L180)
 
 ## Flow: status
 
 Status is read-only: run `stale`, summarize the buckets in plain language, and change nothing.
 
-Sources: [SKILL.md:171-173](../../SKILL.md#L171-L173)
+Sources: [SKILL.md:182-184](../../SKILL.md#L182-L184)
 
 ## How agents consume the wiki
 
 For architecture or "how does X work" questions in a repo with `.akashic/wiki/`, an agent reads `wiki/README.md` (the TOC), opens the relevant pages, and verifies load-bearing claims against the cited lines — the wiki is a map, not the territory, and each page's footer says which commit it describes. Before editing a source file, the agent greps `catalog.json` for that path in `files`/`scope` and reads the pages documenting it, gaining pre-digested context for the change.
 
-Sources: [SKILL.md:175-182](../../SKILL.md#L175-L182)
+Sources: [SKILL.md:186-193](../../SKILL.md#L186-L193)
 
-*Generated from commit `515e459` on 2026-08-07.*
+*Generated from commit `adadcf1` on 2026-08-07.*

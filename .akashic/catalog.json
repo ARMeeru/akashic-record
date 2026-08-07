@@ -30,7 +30,7 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:d7e593e2578c5e9d55613230ab3877377459df1566d6c4d9d216b830766b264f",
+      "hash": null,
       "frozen": false,
       "blobs": {
         "CLAUDE.md": "b18054bdc2776a36d0d1ecbee50aeec42c064ac7",
@@ -604,7 +604,7 @@
         "SKILL.md"
       ],
       "status": "done",
-      "hash": "sha256:d183afc5e7d73554ed10fab6543785782b7f9b255bf504f13ec166e268cd9fe9",
+      "hash": null,
       "frozen": false,
       "blobs": {
         "SKILL.md": "ffe0e2b69244258198066f7374de5f89f96e0fe9"
