@@ -112,8 +112,13 @@ receive failures on stdin; without it they still reach stderr.
 
 ## Roadmap
 
+All four milestones have shipped:
+
+- **M0 — Hygiene and safety**: CI on the supported interpreters, documented glob semantics, a read-only mandate rendered into every subagent prompt.
 - **M1 — The loop exists**: the wiki updates itself via PR; no-op cycles cost zero tokens.
 - **M2 — Cheap, reviewable cycles**: most update PRs are tiny; pure line drift costs zero tokens and can auto-merge.
-- **M3 — Trust, right-sized**: deterministic hallucination guards for free; deep audit on demand.
+- **M3 — Trust, right-sized**: `verify` warns on invented identifiers and on anchored content no citation covers; `plan-check` and `plan-critic` gate the plan before a fan-out instead of gating only its output.
+
+What is left is the Backlog milestone — deliberately deferred, each item carrying the condition that would bring it back.
 
 Live status: [milestones](https://github.com/ARMeeru/akashic-record/milestones).
