@@ -96,6 +96,32 @@ no commits, too many files — relay these to the user verbatim; they are action
    `package.json`, `pyproject.toml`, …) belong to the index page's scope. A scope
    matching more than ~200 files means the page should be split.
 
+   **Split on how many similar things a page must describe at once, not on file count.**
+   This is the single strongest lever on whether a page comes out true, and it was
+   measured rather than assumed. A page covering three small modules with a handful of
+   functions between them produced no over-generalizations, no miscounts and no
+   self-contradictions. A page covering **one** file that declared 21 near-identical
+   functions produced all three, exactly as the 13-file page it was split out of had.
+   File count was a proxy; the count of parallel entities is the thing.
+
+   So when a scope pulls in a family — twenty route handlers, fifteen sibling specs,
+   a service exporting twenty senders — assume the page will write "every handler…"
+   and get it wrong, and split until each page speaks about a handful. Roughly ten
+   parallel entities is where it starts to break down.
+
+   **Know the limit before you plan around it: scope globs cannot split a file.** A
+   1,872-line module with 21 exported functions is one indivisible unit, so no split
+   reaches inside it. When the entities are crowded into a single file, the rule cannot
+   be satisfied and the page's `goal` is the only remaining lever — name the specific
+   groups it must distinguish rather than letting it generalize across them.
+
+   **A small scope has its own failure mode, so do not over-shrink.** A page whose
+   citable set is too narrow starts making true claims it cannot cite — who calls this,
+   what consumes that — because the answer lives in a file outside its scope.
+   Cite-or-omit makes those defects even when the statement is correct. Cross-link
+   instead, and if a page keeps needing a neighbour's files to explain itself, the split
+   was cut in the wrong place.
+
    **Glob semantics** (`scope`, `exclude`), because getting these wrong is silent:
    patterns are `fnmatch`, not gitignore. `*` **crosses `/`**, so `src/lib/*` claims the
    entire subtree beneath it and an interior `*` is not one path segment. A slash-free

@@ -328,6 +328,23 @@ It emits JSON on stdout and a plain-language warning per finding on stderr:
   finding: a 10k-line outlier should be visible before dispatch instead of in the bill,
   and picking a threshold for "too big" would be inventing one.
 
+**Why there is no entity-count check here, though entity count is what matters.** A
+controlled field run split one 13-file page into three and kept the original as a control,
+measuring both under the same judge. Pooled accuracy went from 14% to 54%, but the arms
+disagreed in a way that named the real variable: the arm covering three small modules made
+*no* over-generalizations, miscounts or self-contradictions, while the arm covering a
+single file that declared 21 near-identical functions reproduced all three failures the
+13-file control had. File count was a proxy. The number of parallel entities a page must
+describe at once is the lever.
+
+That finding belongs in the planning instructions, not in this script, and `SKILL.md`
+carries it. Counting entities means parsing declarations per language, which is a static
+analyser — §8 territory, and a large permanent dependency bought for one advisory number.
+The same run also showed the ceiling on acting on it: scope globs cannot split a file, so
+a module crowding 21 entities into 1,872 lines cannot be split at all, and the page's
+`goal` is the only remaining lever there. A check that flagged an unfixable condition on
+every run would be noise of the kind the overlap list already taught us to avoid.
+
 Expansion goes through `expand_scope`, the same function that builds a subagent's citable
 list, so the check measures the real fan-out input rather than the globs someone typed.
 
