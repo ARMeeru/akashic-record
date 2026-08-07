@@ -1288,6 +1288,106 @@ class TestPlanCritic(RepoCase):
         self.assertEqual(ctx.exception.code, 2)
 
 
+class TestAudit(RepoCase):
+    """The on-demand claim audit. Deterministic halves only: what gets
+    extracted, and what the rendered judge prompt does and does not contain.
+    The judgment is an LLM's and is not stubbed."""
+
+    def audit_repo(self, page_body, source=None):
+        repo = self.make_repo()
+        self.write(repo, "src/app.py",
+                   source or "def alpha():\n    return 1\n\n\ndef beta():\n"
+                             "    return 2\n")
+        self.commit(repo)
+        self.write(repo, ".akashic/wiki/index.md", page_body)
+        self.catalog(repo, [self.page("index", files=["src/app.py"],
+                                      scope=["src/*"])])
+        return akashic.repo_root(repo)
+
+    def test_evidence_is_the_exact_cited_bytes(self):
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        section = akashic.audit_extract(root)["pages"][0]["sections"][0]
+        self.assertEqual(section["evidence"][0]["text"],
+                         "def alpha():\n    return 1")
+
+    def test_the_claim_drops_its_heading_and_its_sources_paragraph(self):
+        """Neither is a claim. The Sources paragraph is also where the file
+        paths live, which this check deliberately withholds."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        section = akashic.audit_extract(root)["pages"][0]["sections"][0]
+        self.assertEqual(section["claim"], "It returns one.")
+        self.assertEqual(section["title"], "Alpha")
+
+    def test_the_rendered_prompt_never_names_a_file(self):
+        """The design invariant. Every planning defect that motivated the
+        audit work came from reasoning off a name; a judge shown the path
+        fills gaps with what a file by that name usually contains."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        text = akashic.render_audit_prompt(root, "index")
+        self.assertNotIn("src/app.py", text)
+        self.assertIn("[E1]", text)
+        self.assertIn("def alpha():", text)
+
+    def test_the_path_mapping_still_travels_in_the_extract(self):
+        """Blind for the judge, not for the orchestrator -- otherwise a
+        finding names a label nobody can act on."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        item = akashic.audit_extract(root)["pages"][0]["sections"][0]["evidence"][0]
+        self.assertEqual((item["label"], item["path"], item["start"], item["end"]),
+                         ("E1", "src/app.py", 1, 2))
+
+    def test_labels_are_unique_across_a_page(self):
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nOne.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n\n"
+            "## Beta\n\nTwo.\n\n"
+            "Sources: [src/app.py:5-6](../../src/app.py#L5-L6)\n")
+        page = akashic.audit_extract(root)["pages"][0]
+        labels = [e["label"] for s in page["sections"] for e in s["evidence"]]
+        self.assertEqual(labels, ["E1", "E2"])
+        self.assertEqual(len(set(labels)), len(labels))
+
+    def test_the_prompt_tells_the_judge_to_default_to_refuting(self):
+        """A judge that only reports what it can disprove reports almost
+        nothing; the useful verdict is 'the evidence is silent on this'."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        text = akashic.render_audit_prompt(root, "index")
+        self.assertIn("Default to refuting", text)
+        for verdict in ("contradicted", "unsupported", "overstated"):
+            self.assertIn(verdict, text)
+
+    def test_an_uncited_section_says_so_rather_than_vanishing(self):
+        """Dropping it would hide the strongest possible finding: prose
+        resting on nothing at all."""
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nIt returns one.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n\n"
+            "## Bare\n\nAsserted with no source whatsoever.\n")
+        text = akashic.render_audit_prompt(root, "index")
+        self.assertIn("Section: Bare", text)
+        self.assertIn("EVIDENCE: none", text)
+
+    def test_unknown_page_ids_fail_rather_than_auditing_nothing(self):
+        root = self.audit_repo(
+            "# Index\n\n## Alpha\n\nOne.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        for call in (lambda: akashic.audit_extract(root, "ghost"),
+                     lambda: akashic.render_audit_prompt(root, "ghost")):
+            with self.assertRaises(SystemExit) as ctx:
+                call()
+            self.assertEqual(ctx.exception.code, 2)
+
+
 class TestLoop(RepoCase):
     """The runner's decision layer. The LLM invocation itself is not covered:
     it shells out to `claude -p`, and a test that stubbed it would only assert

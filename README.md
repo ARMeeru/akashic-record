@@ -81,6 +81,7 @@ python3 akashic.py -C <repo> prompt <id>   # render one page's exact subagent pr
 python3 akashic.py -C <repo> remap         # shift drifted citations to new line numbers (no LLM)
 python3 akashic.py -C <repo> plan-check    # catalog shape checks before a fan-out
 python3 akashic.py -C <repo> plan-critic   # render the adversarial plan-review prompt
+python3 akashic.py -C <repo> audit prompt <id>  # blind claim refuter (on demand; never a gate)
 python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating a page
 ```
 

@@ -1808,6 +1808,193 @@ def cmd_prompt(root, page_id):
     return 0
 
 
+# ----------------------------------------------------------------------- audit
+
+def section_claim(body_text, start, end):
+    """A section's prose with its `Sources:` paragraphs removed.
+
+    The citation machinery is not part of the claim, and leaving it in would
+    hand the judge the file paths this check deliberately withholds."""
+    lines = body_text.split("\n")
+    out, skipping = [], False
+    for line in lines[start - 1:end]:
+        # The H2 line itself travels as `title`; repeating it inside the claim
+        # would have the judge grading a heading.
+        if line.strip().startswith("## ") and not out and not skipping:
+            continue
+        if SOURCES_RE.match(line):
+            skipping = True
+            continue
+        if skipping:
+            if not line.strip():
+                skipping = False
+            continue
+        out.append(line)
+    return "\n".join(out).strip()
+
+
+def span_text(root, path, span):
+    """The exact bytes a citation points at, as text. Nothing summarized."""
+    try:
+        lines = (root / path).read_text(
+            encoding="utf-8", errors="surrogateescape").split("\n")
+    except OSError:
+        return None
+    start, end = span
+    return "\n".join(lines[start - 1:end])
+
+
+def audit_bundle(root, page, body):
+    """Per H2 section: the claim, and the evidence spans under opaque labels.
+
+    Labels rather than paths, and this is the whole point of the design. Every
+    planning defect that motivated the audit work came from reasoning off a
+    name -- a goal promising site types because a migration was called
+    `add-siteType-enums.js`. A judge shown `src/lib/services/auth/index.ts`
+    will fill gaps with what an auth service usually does. Shown `[E1]` it can
+    only read what is in front of it, which is the question being asked.
+
+    The mapping back to paths travels in the extract JSON, so a finding is
+    still actionable -- the orchestrator translates, not the judge."""
+    _, citations, _, _ = parse_page_links(body)
+    per_line = {}
+    for lineno, raw in citations:
+        path, fragment, err = resolve_citation(root, page_file_of(root, page), raw)
+        if err or not fragment or path.startswith(AKASHIC_DIR + "/"):
+            continue
+        span = citation_span(root, path, fragment)
+        if span:
+            per_line.setdefault(lineno, []).append((path, span))
+
+    sections, label_no = [], 0
+    for title, start, end in h2_sections(body):
+        evidence = []
+        for lineno in sorted(per_line):
+            if not start <= lineno <= end:
+                continue
+            for path, span in per_line[lineno]:
+                text = span_text(root, path, span)
+                if text is None:
+                    continue
+                label_no += 1
+                evidence.append({
+                    "label": f"E{label_no}",
+                    "path": path, "start": span[0], "end": span[1],
+                    "text": text,
+                })
+        claim = section_claim(body, start, end)
+        if not claim and not evidence:
+            continue
+        sections.append({"title": title, "claim": claim,
+                         "evidence": evidence})
+    return sections
+
+
+def page_file_of(root, page):
+    return wiki_dir(root) / f"{page['id']}.md"
+
+
+def audit_extract(root, page_id=None):
+    """Deterministic claim/evidence bundles. Extracts bytes, judges nothing."""
+    catalog = load_catalog(root)
+    pages = [p for p in catalog["pages"] if p.get("status") == "done"]
+    if page_id is not None:
+        pages = [p for p in pages if p["id"] == page_id]
+        if not pages:
+            die(f"no such done page \"{page_id}\" in catalog")
+    out = []
+    for page in pages:
+        page_file = page_file_of(root, page)
+        if not page_file.is_file():
+            continue
+        body = page_file.read_text(encoding="utf-8", errors="replace")
+        out.append({"id": page["id"], "title": page.get("title", ""),
+                    "sections": audit_bundle(root, page, body)})
+    return {"pages": out}
+
+
+def render_audit_prompt(root, page_id):
+    """The blind judge prompt: claims and evidence, no repo, no paths.
+
+    On-demand by owner decision (2026-07-29): this is not part of the standing
+    update flow and never gates `anchor`. Reach for it when a page smells
+    wrong. `verify` proves a citation resolves and the anchored-content check
+    proves it still points where it was anchored; neither can say whether the
+    sentence above it is true, and that is the only question here.
+
+    Rendered rather than hand-written for the same reason page prompts are:
+    a judge prompt reconstructed from memory is a different judge every time,
+    and the one property that makes this worth running -- that it cannot see
+    past the evidence -- is exactly the one an improvised prompt loses."""
+    bundle = audit_extract(root, page_id)
+    pages = bundle["pages"]
+    if not pages:
+        die(f"no generated page \"{page_id}\" to audit")
+    page = pages[0]
+    if not page["sections"]:
+        die(f"page \"{page_id}\" has no sections with claims to audit")
+
+    lines = [
+        f"Refute what you can in the following documentation for "
+        f"**{page['title']}**.",
+        "",
+        "You have no repository access and you need none. Each section below "
+        "gives a claim and the evidence it rests on: the exact lines the "
+        "documentation cites, verbatim. Judge the claim against that evidence "
+        "and nothing else.",
+        "",
+        "Evidence is labelled `[E1]`, `[E2]` and so on rather than by "
+        "filename, deliberately. Naming the file invites filling gaps with "
+        "what a file by that name usually contains, and that failure has a "
+        "track record here -- a page once promised \"site types and "
+        "parent/child relationships\" on the strength of a migration named "
+        "`add-siteType-enums.js`, where no parent column existed anywhere and "
+        "the enum was used by no column. If the evidence does not show it, it "
+        "is not shown.",
+        "",
+        "Default to refuting. A claim that the evidence merely fails to "
+        "contradict is not supported -- say so. Being unable to find fault is "
+        "a finding too, but it is the rarer one.",
+        "",
+    ]
+    for section in page["sections"]:
+        lines += [f"## Section: {section['title']}", "", "CLAIM:", ""]
+        lines += [section["claim"] or "(no prose)", ""]
+        if section["evidence"]:
+            lines.append("EVIDENCE:")
+            for item in section["evidence"]:
+                lines += ["", f"[{item['label']}]", "```",
+                          item["text"], "```"]
+        else:
+            lines.append("EVIDENCE: none -- this section cites nothing.")
+        lines.append("")
+    lines += [
+        "## Report",
+        "",
+        "For each claim that the evidence does not support: quote the "
+        "sentence, name the evidence labels you checked it against, and say "
+        "precisely what is missing or contradicted. Distinguish three cases "
+        "and use the words: **contradicted** (the evidence shows otherwise), "
+        "**unsupported** (the evidence is silent), **overstated** (broader "
+        "than what is shown, e.g. \"always\" against a conditional). Ignore "
+        "matters of style. End with the count of sections you found sound.",
+        "",
+        "Do not rewrite the documentation, and do not ask for more evidence "
+        "-- the limited view is the method, not an oversight.",
+    ]
+    return "\n".join(lines)
+
+
+def cmd_audit_extract(root, page_id=None):
+    print(json.dumps(audit_extract(root, page_id), indent=2))
+    return 0
+
+
+def cmd_audit_prompt(root, page_id):
+    print(render_audit_prompt(root, page_id))
+    return 0
+
+
 # ------------------------------------------------------------------------ main
 
 def main(argv=None):
@@ -1838,6 +2025,17 @@ def main(argv=None):
     sub.add_parser(
         "plan-critic",
         help="render the adversarial plan-review prompt for the whole catalog")
+    audit_parser = sub.add_parser(
+        "audit", help="on-demand claim audit: extract evidence, render a "
+                      "blind judge prompt (never gates anchor)")
+    audit_sub = audit_parser.add_subparsers(dest="audit_command", required=True)
+    audit_extract_parser = audit_sub.add_parser(
+        "extract", help="JSON claim/evidence bundles per H2 section")
+    audit_extract_parser.add_argument(
+        "--page", help="limit to one page id (default: every done page)")
+    audit_prompt_parser = audit_sub.add_parser(
+        "prompt", help="render the blind refuter prompt for one page")
+    audit_prompt_parser.add_argument("page_id")
     bless_parser = sub.add_parser(
         "bless", help="mark pages as tool-written (hash -> null) after regenerating")
     bless_parser.add_argument("page_ids", nargs="+", metavar="page-id")
@@ -1847,6 +2045,10 @@ def main(argv=None):
     args = parser.parse_args(argv)
 
     root = repo_root(args.path)
+    if args.command == "audit":
+        if args.audit_command == "extract":
+            return cmd_audit_extract(root, args.page)
+        return cmd_audit_prompt(root, args.page_id)
     if args.command == "prompt":
         return cmd_prompt(root, args.page_id)
     if args.command == "bless":

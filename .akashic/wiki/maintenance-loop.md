@@ -27,7 +27,7 @@ Sources: [bin/akashic_loop.py:34-44](../../bin/akashic_loop.py#L34-L44), [bin/ak
 
 Exactly one kind. A remap PR contains nothing a model wrote: every line number in it was shifted by integer arithmetic from a diff, and a reviewer can re-derive the whole change in seconds. It requests auto-merge as soon as it is opened.
 
-A PR carrying regenerated pages never does. `verify` proves that the citations resolve; it says nothing about whether the sentences above them are true, and that gap is precisely what a reader is for. The policy lives in one predicate that both paths call, so the two cannot drift apart, and a test pins the direction — if it ever inverted, unread generated prose would start landing on the default branch by itself.
+A PR carrying regenerated pages never does. `verify` proves that the citations resolve; it says nothing about whether the sentences above them are true, and that gap is precisely what a reader is for. The policy lives in one predicate that both paths call, so the two cannot drift apart. If it ever inverted, unread generated prose would start landing on the default branch by itself; the test that pins the direction lives with the rest of the suite, covered in [Deterministic Core](./deterministic-core.md).
 
 Auto-merge is *requested*, not performed. The branch's required status checks are the real gate, so a red run holds the PR open rather than landing it. Where a repository has auto-merge switched off the request fails harmlessly and the PR waits for a human, which is why that path warns instead of raising.
 
