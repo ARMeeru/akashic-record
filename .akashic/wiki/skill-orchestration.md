@@ -21,7 +21,7 @@ Sources: [SKILL.md:13-30](../../SKILL.md#L13-L30)
 
 ## The helper script
 
-All deterministic operations go through the helper, invoked as `python3 "<skill's base directory>/akashic.py" -C <target-repo> <command>`. Ten commands exist: `scan` (a `# N files, M lines` header followed by one `lines<TAB>path` entry per file, the planner's input), `stale` (JSON staleness report with `stale/edited/orphaned/uncovered/missing/planned/drifted` buckets), `verify` (checks pages, citations, and catalog invariants, exiting 1 on any error, and warning — never erroring — when an identifier named in a section appears in none of the files that section cites, or when code the page was anchored to is covered by none of its citations), `anchor` (records deps and hashes, stamps the anchor commit, renders the TOC), `prompt <id>` (renders the exact subagent prompt for one catalog page, as text meant to be dispatched verbatim), and `bless <id>...` (marks pages as tool-written by nulling their hash, with `--done` also flipping `status`). `remap` shifts citations whose lines moved without their content changing, with no LLM involved, and `plan-check` reports the shape of the catalog — unmatched scopes, a scope inside a sibling's, heavy pairwise overlap, the ~200-file split rule, empty goals, duplicate titles, and expanded line totals per page — always exiting 0, because it advises the plan rather than gating it. `plan-critic` renders the adversarial plan-review prompt for the whole catalog, as text meant to be dispatched verbatim to a single subagent. `audit extract` and `audit prompt <id>` are the on-demand claim audit: the first emits claim-and-evidence bundles per section, the second renders a blind refuter prompt in which the evidence is labelled rather than named. Neither is part of any standing flow and neither gates `anchor` — reach for them when a page smells wrong. `stale` also takes `--check`, which repeats the report and exits 1 when any bucket is non-empty — the zero-token gate a scheduled runner polls with. Exit codes are 0 for ok, 1 for verification failure, and 2 for precondition or usage errors (no git repo, no commits, too many files) — precondition errors are relayed to the user verbatim because they are actionable. The internals of these commands are covered in [Deterministic Core](./deterministic-core.md).
+All deterministic operations go through the helper, invoked as `python3 "<skill's base directory>/akashic.py" -C <target-repo> <command>`. Ten commands exist: `scan` (a `# N files, M lines` header followed by one `lines<TAB>path` entry per file, the planner's input), `stale` (JSON staleness report with `stale/edited/orphaned/uncovered/missing/planned/drifted/restated` buckets), `verify` (checks pages, citations, and catalog invariants, exiting 1 on any error, and warning — never erroring — when an identifier named in a section appears in none of the files that section cites, or when code the page was anchored to is covered by none of its citations), `anchor` (records deps and hashes, stamps the anchor commit, renders the TOC), `prompt <id>` (renders the exact subagent prompt for one catalog page, as text meant to be dispatched verbatim), and `bless <id>...` (marks pages as tool-written by nulling their hash, with `--done` also flipping `status`). `remap` shifts citations whose lines moved without their content changing, with no LLM involved, and `plan-check` reports the shape of the catalog — unmatched scopes, a scope inside a sibling's, every overlapping pair ranked by duplicated lines, the ~200-file split rule, empty goals, duplicate titles, and expanded line totals per page — always exiting 0, because it advises the plan rather than gating it. `plan-critic` renders the adversarial plan-review prompt for the whole catalog, as text meant to be dispatched verbatim to a single subagent. `audit extract` and `audit prompt <id>` are the on-demand claim audit: the first emits claim-and-evidence bundles per section, the second renders a blind refuter prompt in which the evidence is labelled rather than named. Neither is part of any standing flow and neither gates `anchor` — reach for them when a page smells wrong. `stale` also takes `--check`, which repeats the report and exits 1 when any bucket is non-empty — the zero-token gate a scheduled runner polls with. Exit codes are 0 for ok, 1 for verification failure, and 2 for precondition or usage errors (no git repo, no commits, too many files) — precondition errors are relayed to the user verbatim because they are actionable. The internals of these commands are covered in [Deterministic Core](./deterministic-core.md).
 
 Sources: [SKILL.md:32-54](../../SKILL.md#L32-L54)
 
@@ -91,18 +91,18 @@ An update begins with `stale`. If the report says `anchor_reachable` is false, `
 
 The flow closes with `verify` → fix → `anchor`, and a per-page report of what changed and what was done, phrased so it can serve as the body of the wiki commit message.
 
-Sources: [SKILL.md:175-204](../../SKILL.md#L175-L204)
+Sources: [SKILL.md:175-208](../../SKILL.md#L175-L208)
 
 ## Flow: status
 
 Status is read-only: run `stale`, summarize the buckets in plain language, and change nothing.
 
-Sources: [SKILL.md:226-228](../../SKILL.md#L226-L228)
+Sources: [SKILL.md:230-232](../../SKILL.md#L230-L232)
 
 ## How agents consume the wiki
 
 For architecture or "how does X work" questions in a repo with `.akashic/wiki/`, an agent reads `wiki/README.md` (the TOC), opens the relevant pages, and verifies load-bearing claims against the cited lines — the wiki is a map, not the territory, and each page's footer says which commit it describes. Before editing a source file, the agent greps `catalog.json` for that path in `files`/`scope` and reads the pages documenting it, gaining pre-digested context for the change.
 
-Sources: [SKILL.md:230-237](../../SKILL.md#L230-L237)
+Sources: [SKILL.md:234-241](../../SKILL.md#L234-L241)
 
-*Generated from commit `93512406` on 2026-08-07.*
+*Generated from commit `68b453cc` on 2026-08-07.*
