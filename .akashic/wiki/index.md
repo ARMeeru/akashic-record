@@ -129,7 +129,7 @@ python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --
 
 Exit codes: 0 ok, 1 verification failure, 2 usage or precondition error. There is no build step, no dependencies, and no lint config; the suite runs with `python3 test_akashic.py`, and single classes or tests can be named directly. Fixtures are throwaway git repos built in `tempfile`, one smallest-possible check per deterministic component; the LLM phases have no unit tests, because the runtime `verify` gate is their coverage.
 
-Sources: [README.md:53-87](../../README.md#L53-L87), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [README.md:88-93](../../README.md#L88-L93), [CLAUDE.md:72-74](../../CLAUDE.md#L72-L74), [DESIGN.md:837-849](../../DESIGN.md#L837-L849)
+Sources: [README.md:88-122](../../README.md#L88-L122), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [README.md:123-128](../../README.md#L123-L128), [CLAUDE.md:72-74](../../CLAUDE.md#L72-L74), [DESIGN.md:837-849](../../DESIGN.md#L837-L849)
 
 ## Contributing and dogfooding
 
@@ -137,13 +137,13 @@ The default branch is `develop`; branch from it and target PRs at it, with commi
 
 This repo carries its own generated wiki in `.akashic/` and follows the skill's own rules: never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, or `generated` fields, running `bless <id>` after regenerating a page instead, never edit the derived `wiki/README.md`, and after source changes refresh through the update flow — `stale`, regenerate, `verify`, `anchor` — committed as `chore: refresh self-dogfooded wiki`.
 
-Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:804-824](../../DESIGN.md#L804-L824), [README.md:110-126](../../README.md#L110-L126), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:76-78](../../CLAUDE.md#L76-L78)
+Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:19-32](../../CONTRIBUTING.md#L19-L32), [CONTRIBUTING.md:34-36](../../CONTRIBUTING.md#L34-L36), [DESIGN.md:804-824](../../DESIGN.md#L804-L824), [README.md:145-163](../../README.md#L145-L163), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:76-78](../../CLAUDE.md#L76-L78)
 
 ## Security and license
 
-Report vulnerabilities privately through GitHub private vulnerability reporting, not a public issue; expect acknowledgment within 7 days, with best-effort timelines on a solo-maintained project. In scope: path traversal out of the target repository root, writes escaping `.akashic/`, anything that causes stale or human-edited content to be reported as fresh, and bypasses of the `verify` gate. Out of scope: the quality or accuracy of LLM-generated prose (a regular bug), vulnerabilities in the repositories the tool is run against, and Claude Code itself. Only the latest commit on `develop` is supported — there are no tagged releases, and install is a symlink of the working tree. The project is MIT licensed, copyright (c) 2026 ARMeeru: permissive use, modification, and redistribution, provided the license text and copyright notice travel with copies.
+The README is explicit about what the tool does *not* establish: `verify` proves a citation resolves and says nothing about whether the sentence above it is true, and four update runs against a real 28-page repo found every one of seven audited pages materially wrong. A generated page is a map with footnotes, and the citations are where to check. Report vulnerabilities privately through GitHub private vulnerability reporting, not a public issue; expect acknowledgment within 7 days, with best-effort timelines on a solo-maintained project. In scope: path traversal out of the target repository root, writes escaping `.akashic/`, anything that causes stale or human-edited content to be reported as fresh, and bypasses of the `verify` gate. Out of scope: the quality or accuracy of LLM-generated prose (a regular bug), vulnerabilities in the repositories the tool is run against, and Claude Code itself. The policy also names two things that read like controls and are not: the read-only mandate rendered into every subagent prompt, and the blind labelling in the claim audit, are instructions to a model rather than a sandbox. And while `akashic.py` makes no network calls, the maintenance loop does by design — it runs `claude -p`, pushes, opens pull requests, and executes `$AKASHIC_NOTIFY` through a shell. Only the latest commit on `develop` is supported — there are no tagged releases, and install is a symlink of the working tree. The project is MIT licensed, copyright (c) 2026 ARMeeru: permissive use, modification, and redistribution, provided the license text and copyright notice travel with copies.
 
-Sources: [SECURITY.md:1-7](../../SECURITY.md#L1-L7), [SECURITY.md:9-24](../../SECURITY.md#L9-L24), [SECURITY.md:26-28](../../SECURITY.md#L26-L28), [LICENSE:1-13](../../LICENSE#L1-L13)
+Sources: [SECURITY.md:1-7](../../SECURITY.md#L1-L7), [SECURITY.md:9-34](../../SECURITY.md#L9-L34), [SECURITY.md:36-38](../../SECURITY.md#L36-L38), [LICENSE:1-13](../../LICENSE#L1-L13)
 
 ## Where to start reading
 
@@ -157,4 +157,4 @@ A reading order for the first hour:
 
 Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:853-860](../../DESIGN.md#L853-L860), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
 
-*Generated from commit `111f4296` on 2026-08-07.*
+*Generated from commit `8cb4e281` on 2026-08-07.*
