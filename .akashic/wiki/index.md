@@ -52,11 +52,11 @@ flowchart LR
     Verify --> Anchor["3b. Anchor (script): record deps/hashes, stamp commit, render TOC"]
 ```
 
-Sources: [DESIGN.md:239-244](../../DESIGN.md#L239-L244), [DESIGN.md:246-252](../../DESIGN.md#L246-L252), [DESIGN.md:259-274](../../DESIGN.md#L259-L274), [DESIGN.md:427-512](../../DESIGN.md#L427-L512)
+Sources: [DESIGN.md:251-256](../../DESIGN.md#L251-L256), [DESIGN.md:258-264](../../DESIGN.md#L258-L264), [DESIGN.md:271-286](../../DESIGN.md#L271-L286), [DESIGN.md:443-528](../../DESIGN.md#L443-L528)
 
 Two things about Phase 2 are worth knowing before you touch it. Each subagent's prompt is rendered by `akashic.py prompt <id>`, never hand-written — the mechanical template carries the goal, the scope-expanded file allowlist, the sibling id-to-title list, and the citation contract, because an agent hand-constructing that prompt from memory is how the untracked-citation bug first shipped. And the standing generation rule is cite-or-omit: prefer "not documented here" over invention, with a `Sources:` entry behind every non-obvious claim. Scope is the citable boundary, but nothing enforces it at generation time; `verify` warns rather than errors when a page cites a real file outside its scope, which is a planning signal — scope too wide duplicates content, scope too narrow forces the subagent outside it. There is a hard precondition on the whole pipeline: a git repo with at least one commit, failing loudly rather than degrading, because the anchor model depends on it.
 
-Sources: [DESIGN.md:380-394](../../DESIGN.md#L380-L394), [DESIGN.md:408-425](../../DESIGN.md#L408-L425), [DESIGN.md:254-257](../../DESIGN.md#L254-L257)
+Sources: [DESIGN.md:396-410](../../DESIGN.md#L396-L410), [DESIGN.md:424-441](../../DESIGN.md#L424-L441), [DESIGN.md:266-269](../../DESIGN.md#L266-L269)
 
 ## On-disk format and invariants
 
@@ -78,12 +78,13 @@ A handful of invariants shape most of the code, and contributors must not break 
 - Nothing deterministic can say whether a sentence is *true*. `audit` is the on-demand answer: it extracts each claim beside the exact bytes it cites and renders a judge prompt where the evidence is labelled `[E1]`, `[E2]` rather than named, so a reviewer cannot fill gaps with what a file of that name usually contains. It never gates `anchor`.
 - A second warning asks about ranges rather than bounds. Because `ranges` are recorded in anchor coordinates and the anchor commit is recorded too, `verify` can read what a span actually held, relocate that content by its first and last non-blank lines, and warn when no citation on the page covers where it landed. This is what catches a citation rewritten to plausible-but-wrong numbers, which the bounds check cannot see.
 - Citations resolve against git's tracked-path set, not the filesystem, and resolved paths must realpath inside the repo root. An untracked or wrong-case path could never appear in an anchor-to-HEAD diff, so it would make the page permanently fresh.
+- The goal baseline behind `restated` is recorded **only for pages the tool actually wrote** — stamping it on every page blessed away ten real corrections on a live repo, and the true baseline was then unrecoverable.
 - A changed *brief* is its own bucket, `restated`: a goal edited since the page was generated, or a scope widened onto a file that already existed. The second needed nothing new recorded, since anything now in scope and absent from the recorded `files` is exactly it. It is where the plan gates' findings land — acting on them used to write into the catalog and never reach the page.
 - `.akashic/` paths are never staleness inputs or recorded dependencies — the wiki must not depend on itself.
 - Immediately after `anchor`, `stale` is empty (tested); an unreachable anchor reports *all* pages stale rather than guessing.
 - Subagent prompts are rendered by `prompt <id>`, never hand-written.
 
-Sources: [DESIGN.md:58-73](../../DESIGN.md#L58-L73), [DESIGN.md:75-82](../../DESIGN.md#L75-L82), [DESIGN.md:84-108](../../DESIGN.md#L84-L108), [DESIGN.md:157-171](../../DESIGN.md#L157-L171), [CLAUDE.md:52-69](../../CLAUDE.md#L52-L69), [CONTRIBUTING.md:11-16](../../CONTRIBUTING.md#L11-L16)
+Sources: [DESIGN.md:58-73](../../DESIGN.md#L58-L73), [DESIGN.md:75-82](../../DESIGN.md#L75-L82), [DESIGN.md:84-108](../../DESIGN.md#L84-L108), [DESIGN.md:169-183](../../DESIGN.md#L169-L183), [CLAUDE.md:52-69](../../CLAUDE.md#L52-L69), [CONTRIBUTING.md:11-16](../../CONTRIBUTING.md#L11-L16)
 
 ## The citation contract
 
@@ -97,13 +98,13 @@ Three details of the grammar exist because real paths and real tooling forced th
 
 Line numbers are coordinates in the anchor commit. How the generating side of this contract is enforced is covered in [Skill Orchestration](./skill-orchestration.md); the parser and its checks are in [Deterministic Core](./deterministic-core.md).
 
-Sources: [DESIGN.md:179-206](../../DESIGN.md#L179-L206), [DESIGN.md:207-220](../../DESIGN.md#L207-L220), [DESIGN.md:221-230](../../DESIGN.md#L221-L230), [DESIGN.md:231-237](../../DESIGN.md#L231-L237)
+Sources: [DESIGN.md:191-218](../../DESIGN.md#L191-L218), [DESIGN.md:219-232](../../DESIGN.md#L219-L232), [DESIGN.md:233-242](../../DESIGN.md#L233-L242), [DESIGN.md:243-249](../../DESIGN.md#L243-L249)
 
 ## Incremental update
 
 The update mechanism is the convergent one across every shipped system: a stored commit anchor plus a diff plus a per-page file-dependency map, triggered by polling or by hand — never per-push webhooks. `akashic.py stale` is read-only and prints JSON. It first checks that the anchor is reachable; if a force-push or shallow clone made it unreachable it says so and reports all pages stale rather than guessing, because wasting a regeneration is acceptable and marking stale content fresh is not. Then it diffs anchor to HEAD with rename detection, counting a rename as both old and new path, and intersects the changed paths against each page's recorded `files`, plus `scope` globs for added files. The result sorts into four buckets: `stale` pages get regenerated under the same Phase-2 contract; `edited` pages, where the current body hash differs from the recorded one, are never auto-overwritten; `orphaned` pages, whose documented files are all gone, are auto-deleted unless they are also edited, in which case they are only flagged; and `uncovered` added files may become proposed new catalog entries. The run ends by regenerating, verifying, anchoring, and printing a structured report that becomes the commit message. Pages carry no in-page changelog sections — pages are timeless, and temporal data belongs to git.
 
-Sources: [DESIGN.md:518-541](../../DESIGN.md#L518-L541), [DESIGN.md:647-652](../../DESIGN.md#L647-L652)
+Sources: [DESIGN.md:534-557](../../DESIGN.md#L534-L557), [DESIGN.md:663-668](../../DESIGN.md#L663-L668)
 
 ## Getting started
 
@@ -127,7 +128,7 @@ python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --
 
 Exit codes: 0 ok, 1 verification failure, 2 usage or precondition error. There is no build step, no dependencies, and no lint config; the suite runs with `python3 test_akashic.py`, and single classes or tests can be named directly. Fixtures are throwaway git repos built in `tempfile`, one smallest-possible check per deterministic component; the LLM phases have no unit tests, because the runtime `verify` gate is their coverage.
 
-Sources: [README.md:53-86](../../README.md#L53-L86), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [README.md:87-92](../../README.md#L87-L92), [CLAUDE.md:71-73](../../CLAUDE.md#L71-L73), [DESIGN.md:780-792](../../DESIGN.md#L780-L792)
+Sources: [README.md:53-86](../../README.md#L53-L86), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [README.md:87-92](../../README.md#L87-L92), [CLAUDE.md:71-73](../../CLAUDE.md#L71-L73), [DESIGN.md:796-808](../../DESIGN.md#L796-L808)
 
 ## Contributing and dogfooding
 
@@ -135,7 +136,7 @@ The default branch is `develop`; branch from it and target PRs at it, with commi
 
 This repo carries its own generated wiki in `.akashic/` and follows the skill's own rules: never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, or `generated` fields, running `bless <id>` after regenerating a page instead, never edit the derived `wiki/README.md`, and after source changes refresh through the update flow — `stale`, regenerate, `verify`, `anchor` — committed as `chore: refresh self-dogfooded wiki`.
 
-Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:747-767](../../DESIGN.md#L747-L767), [README.md:109-125](../../README.md#L109-L125), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:75-77](../../CLAUDE.md#L75-L77)
+Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:763-783](../../DESIGN.md#L763-L783), [README.md:109-125](../../README.md#L109-L125), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:75-77](../../CLAUDE.md#L75-L77)
 
 ## Security and license
 
@@ -153,6 +154,6 @@ A reading order for the first hour:
 4. `DESIGN.md` in the repo root, when you need the normative answer to a format or behavior question — especially §2 (division of labor), §3.3 (the citation grammar), and §8 (what is deliberately not built). Its build order also doubles as a dependency order for reading the source: `akashic.py`, then `test_akashic.py`, then `SKILL.md`, then `README.md`.
 5. `CONTRIBUTING.md` before your first PR, for the invariants and the branch and commit conventions.
 
-Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:796-803](../../DESIGN.md#L796-L803), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
+Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:812-819](../../DESIGN.md#L812-L819), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
 
-*Generated from commit `2c8e4709` on 2026-08-07.*
+*Generated from commit `6a7a890a` on 2026-08-07.*
