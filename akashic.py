@@ -2057,6 +2057,28 @@ def render_prompt(root, catalog, page_id, update=False):
         "- Cross-reference the most relevant sibling pages as "
         "`[Title](./other-id.md)` in prose.",
         "- Cite-or-omit: prefer \"not documented here\" over invention.",
+        # The three failure modes a blind claim audit found on every page it
+        # was ever pointed at, across four runs against a real repo. They are
+        # standing generation rules rather than another gate because the gates
+        # only ever reported the same result: the prose was wrong. Encoding a
+        # finding in a page's brief is the one intervention that has actually
+        # produced a correct rewrite.
+        "- Scope every generalization to what you actually read. Do not write "
+        "`all`, `every`, `both`, `each` or `entirely` across a family of "
+        "files on the strength of having read some of them -- name the "
+        "specific files a statement covers. \"Both routes verify a bearer "
+        "token\" is a claim about both; if you read one, say which one.",
+        "- An absence claim needs its method. Saying a file has no guard, no "
+        "write, no environment check or no caller is not something reading an "
+        "excerpt can establish. Either state how you checked (\"no `INSERT`, "
+        "`UPDATE` or `DELETE` anywhere in the file, by search\") or do not "
+        "make the claim. A reader cannot tell a checked absence from an "
+        "assumed one, and neither can a reviewer.",
+        "- Write only what the goal asks for. Where the goal says a subject "
+        "belongs to another page, cross-link it in a sentence and stop -- do "
+        "not write the section anyway. A deferred subject is deferred because "
+        "the files that would support it are outside your citable set, so "
+        "anything you write about it rests on nothing.",
         f"- Last line: *Generated from commit `{head[:8]}` on {date}.*",
         f"- Prose language: {catalog.get('language', 'en')}. Structural tokens "
         "(`Sources:`, heading syntax) stay as specified regardless of language.",
