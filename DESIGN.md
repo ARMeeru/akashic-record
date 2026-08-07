@@ -383,6 +383,12 @@ wiki, a failed update flow, an unreadable repo and a missing repo list all exit 
 and fire the notification hook, because a set-and-forget loop that fails silently
 fossilizes the wiki, which is worse than having no loop at all.
 
+`--dry-run` reports what each repo needs and spends nothing. It fires the notification
+hook too, for any repo that is not clean. Under a scheduler stdout is a log file nobody
+opens, and report-only is the mode an install is meant to start in, so a dry run that
+only printed would make a fleet needing work look exactly like a quiet one. A clean dry
+run stays silent: a daily banner that always arrives is a banner that stops being read.
+
 `akashic.py stale` (read-only, prints JSON):
 
 1. `git cat-file -e <anchor>` — if the anchor is unreachable (force-push, shallow

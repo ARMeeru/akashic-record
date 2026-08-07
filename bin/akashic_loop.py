@@ -222,6 +222,14 @@ def process(repo, dry_run=False):
 
     if verdict == CLEAN:
         return 0
+    # A dry run's whole product is the report, and under a scheduler stdout is
+    # a file nobody opens. Without this, the report-only mode -- the mode you
+    # are meant to start in -- says nothing to anyone, which looks exactly
+    # like a clean fleet. The live modes stay quiet here on purpose: they
+    # speak by opening a PR, and notify() is reserved for what needs a human.
+    if dry_run:
+        notify(f"{repo}: {summarize(report)} -> {verdict} "
+               "(dry run; nothing changed)")
     if verdict == REMAP_ONLY:
         try:
             remap_repo(repo, "chore/wiki-remap", dry_run=dry_run)

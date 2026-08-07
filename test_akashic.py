@@ -1106,6 +1106,48 @@ class TestLoop(RepoCase):
         with self.assertRaises(RuntimeError):
             akashic_loop.stale_report(str(repo))
 
+    def test_a_dry_run_with_work_to_do_reaches_the_owner(self):
+        """Under a scheduler, stdout is a log file nobody opens. Report-only
+        mode is the mode you are told to start in, so if it only prints, a
+        fleet needing work is indistinguishable from a clean one."""
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        self.write(repo, ".akashic/wiki/a.md",
+                   "# A\n\nSources: [f1](../../f1.py)\n")
+        self.catalog(repo, [self.page("a", files=["f1.py"], scope=["f1.py"])],
+                     anchor=self.head(repo))
+        self.write(repo, "f1.py", "changed\n")
+        self.commit(repo, "touch it")
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(buf):
+            code = akashic_loop.process(str(repo), dry_run=True)
+        self.assertEqual(code, 0)
+        self.assertIn("akashic-loop:", buf.getvalue(),
+                      "a dry run with outstanding work must notify, not only "
+                      f"print; got: {buf.getvalue()!r}")
+        self.assertIn(akashic_loop.NEEDS_UPDATE, buf.getvalue())
+
+    def test_a_clean_dry_run_stays_silent(self):
+        """The other half: a quiet fleet must not produce a daily banner, or
+        the notification stops meaning anything."""
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        self.write(repo, ".akashic/wiki/a.md",
+                   "# A\n\nSources: [f1](../../f1.py)\n")
+        self.catalog(repo, [self.page("a", files=["f1.py"], scope=["f1.py"])],
+                     anchor=self.head(repo))
+
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(buf):
+            code = akashic_loop.process(str(repo), dry_run=True)
+        self.assertEqual(code, 0)
+        self.assertEqual(buf.getvalue(), "")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

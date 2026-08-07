@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "38261fd6690a0a03071dba4459761d4e502545a7",
-  "generated": "2026-08-07T05:37:47Z",
+  "anchor": "bf0705c8b863112ac6d2bb5288b5b4d007901916",
+  "generated": "2026-08-07T05:43:36Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,12 +30,12 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:1829864ce144eb08021b9fdfbbc781c3dc1c21f3f989bf489cfb7462a9a06f2e",
+      "hash": "sha256:5bc66030b25427aef24fd9da4d5ab110b65e52ce454adf71d36391e6c0f2ca4e",
       "frozen": false,
       "blobs": {
         "CLAUDE.md": "a641a5b884daf0d0cb63ea7fb880aed22d07845b",
         "CONTRIBUTING.md": "85e0da41202b7d09f049ef65cad8f729c2eaac36",
-        "DESIGN.md": "97266597547d59b6555649da76b28e240f4273ef",
+        "DESIGN.md": "3501438b9010cf1b7b32df2649da3313198a43f7",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
         "README.md": "95e9b0db09c6133ecc19e9ea1cf51faedef35c0c",
         "SECURITY.md": "bfc548840a65633e8f1db49bb576b069bcf0d52f"
@@ -179,20 +179,20 @@
             383
           ],
           [
-            450,
-            455
+            456,
+            461
           ],
           [
-            485,
-            505
+            491,
+            511
           ],
           [
-            518,
-            530
+            524,
+            536
           ],
           [
-            534,
-            541
+            540,
+            547
           ]
         ],
         "LICENSE": [
@@ -261,11 +261,11 @@
         "test_akashic.py"
       ],
       "status": "done",
-      "hash": "sha256:78ce41d21386fb7ffa2a35a0d1db5c3e294fe5105df1ad9c8050351bcebd3523",
+      "hash": "sha256:b84e045bf0ac5bb910753b500a2fa487c945073d978abad52e59f329c20a0707",
       "frozen": false,
       "blobs": {
         "akashic.py": "38869cd6bced80344db5c73ea5a35220a91ee4b6",
-        "test_akashic.py": "f192dddda7cdc5258e38bfc07da30a859e43436c"
+        "test_akashic.py": "a5de0ce57ee7ea2d6e9c17b775eea13bcd5dd166"
       },
       "ranges": {
         "akashic.py": [
@@ -525,7 +525,7 @@
           ],
           [
             1007,
-            1111
+            1149
           ]
         ]
       }
@@ -542,10 +542,10 @@
         "bin/akashic_loop.py"
       ],
       "status": "done",
-      "hash": "sha256:5b3a4c34503f7d4ce28cdf25d3fcdbf93b6a298e95c008a272b280125bcb1369",
+      "hash": "sha256:88362027a9d92cbe82045de870b47066aee61319d6444d0c5a4c5863272c36df",
       "frozen": false,
       "blobs": {
-        "bin/akashic_loop.py": "eaa30d9223b59937c87e80496adef85a1f869d96"
+        "bin/akashic_loop.py": "f71e9708bae81340d94d9aec7bc949d3a5ab9293"
       },
       "ranges": {
         "bin/akashic_loop.py": [
@@ -587,7 +587,7 @@
           ],
           [
             124,
-            131
+            130
           ],
           [
             159,
@@ -599,15 +599,23 @@
           ],
           [
             212,
-            242
+            249
           ],
           [
             212,
-            242
+            249
           ],
           [
-            244,
-            269
+            212,
+            249
+          ],
+          [
+            252,
+            281
+          ],
+          [
+            252,
+            281
           ]
         ]
       }
