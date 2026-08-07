@@ -38,7 +38,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | Command | Does | Output |
 |---|---|---|
 | `scan` | filtered file list with line counts (planner input) | a `# N files, M lines` header, then `lines<TAB>path` per file |
-| `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned/drifted` |
+| `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned/drifted/restated` |
 | `stale --check` | same report, plus exit 1 when any bucket is non-empty | zero-token gate for a scheduled runner |
 | `verify` | check pages, citations, catalog invariants; warn on invented identifiers and on anchored content no citation covers | errors, exit 1 if any |
 | `anchor` | record deps + hashes, stamp anchor commit, render TOC | summary |
@@ -188,6 +188,10 @@ no commits, too many files — relay these to the user verbatim; they are action
      content did not, so the fix is arithmetic: `remap` shifts each fragment and its
      human-readable text, blesses the page, and costs nothing. Regenerating these would
      spend a subagent to retype prose that was already correct.
+   - `restated` → the page's *brief* changed, not its code: a goal was edited or a
+     scope was widened onto a file that already existed. Regenerate it under the page
+     contract, same as `stale`. This is where `plan-critic`'s findings land — acting on
+     them used to write into the catalog and never reach the page.
    - `missing` → regenerate from the catalog entry.
    - `edited` → **do not touch** (hard rule 2). List them for the user. A page in both
      `stale` and `edited` is reported as "stale but human-edited — needs manual review".

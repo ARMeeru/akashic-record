@@ -412,6 +412,99 @@ class TestStale(RepoCase):
             return akashic.cmd_stale(root, check=True)
 
 
+class TestRestated(RepoCase):
+    """A page's *brief* changing, as opposed to its sources. Both plan gates
+    produce goal and scope edits as their primary output, so without this
+    every finding on a page that happened not to be stale went nowhere."""
+
+    def brief_repo(self, scope=("src/a.py",), goal="document a"):
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "def a():\n    return 1\n")
+        self.write(repo, "src/b.py", "def b():\n    return 2\n")
+        self.write(repo, ".akashic/wiki/p.md",
+                   "# P\n\n## S\n\nDocs a.\n\n"
+                   "Sources: [src/a.py:1-2](../../src/a.py#L1-L2)\n")
+        self.catalog(repo, [self.page("p", scope=list(scope), goal=goal)])
+        self.commit(repo)
+        root = akashic.repo_root(repo)
+        akashic.anchor_repo(root)
+        self.commit(repo, "anchor")
+        return repo, root
+
+    def edit_catalog(self, repo, **fields):
+        path = repo / ".akashic" / "catalog.json"
+        data = json.loads(path.read_text())
+        data["pages"][0].update(fields)
+        path.write_text(json.dumps(data, indent=2))
+        self.commit(repo, "edit brief")
+
+    def test_a_widened_scope_onto_an_existing_file_is_reported(self):
+        """The half that shipped invisible. `compute_stale` only sees a
+        scope-matched file via `added_now`; a file predating the anchor that
+        newly falls into scope matched nothing at all, so the page silently
+        claimed a file it had never read. Widening a scope is also the plan
+        critic's commonest prescribed fix."""
+        repo, root = self.brief_repo()
+        self.assertEqual(akashic.compute_stale(root)["restated"], [])
+        self.edit_catalog(repo, scope=["src/*"])
+        report = akashic.compute_stale(root)
+        self.assertEqual(report["restated"],
+                         [{"id": "p", "new_in_scope": ["src/b.py"]}])
+        self.assertEqual(report["stale"], [],
+                         "nothing in the code moved; only the ask did")
+
+    def test_a_goal_edit_is_reported(self):
+        repo, root = self.brief_repo()
+        self.edit_catalog(repo, goal="document a and its callers")
+        self.assertEqual(akashic.compute_stale(root)["restated"],
+                         [{"id": "p", "goal_changed": True}])
+
+    def test_whitespace_only_goal_changes_are_not_a_restatement(self):
+        repo, root = self.brief_repo()
+        self.edit_catalog(repo, goal="  document a\n")
+        self.assertEqual(akashic.compute_stale(root)["restated"], [])
+
+    def test_a_catalog_with_no_recorded_goal_hash_stays_quiet(self):
+        """Migration: every catalog written before this existed lacks the
+        field. Absent means unknown, and unknown says nothing -- the same
+        direction `blobs` took."""
+        repo, root = self.brief_repo()
+        path = repo / ".akashic" / "catalog.json"
+        data = json.loads(path.read_text())
+        data["pages"][0].pop("goal_hash")
+        data["pages"][0]["goal"] = "something else entirely"
+        path.write_text(json.dumps(data, indent=2))
+        self.commit(repo, "strip")
+        self.assertEqual(akashic.compute_stale(root)["restated"], [])
+
+    def test_regenerating_and_re_anchoring_clears_it(self):
+        repo, root = self.brief_repo()
+        self.edit_catalog(repo, goal="document a and its callers",
+                          scope=["src/*"])
+        self.assertEqual(len(akashic.compute_stale(root)["restated"]), 1)
+        self.write(repo, ".akashic/wiki/p.md",
+                   "# P\n\n## S\n\nDocs a and b.\n\n"
+                   "Sources: [src/a.py:1-2](../../src/a.py#L1-L2), "
+                   "[src/b.py:1-2](../../src/b.py#L1-L2)\n")
+        akashic.bless_pages(root, ["p"])
+        akashic.anchor_repo(root)
+        self.commit(repo, "regen")
+        report = akashic.compute_stale(root)
+        self.assertEqual(report["restated"], [])
+        self.assertTrue(all(not report[b] for b in akashic.WORK_BUCKETS),
+                        f"post-anchor invariant must still hold: {report}")
+
+    def test_the_runner_gate_sees_it(self):
+        repo, root = self.brief_repo()
+        self.edit_catalog(repo, scope=["src/*"])
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(buf):
+            code = akashic.cmd_stale(root, check=True)
+        self.assertEqual(code, 1, "a changed brief is outstanding work")
+        self.assertIn("restated", buf.getvalue())
+
+
 class TestVerify(RepoCase):
     def valid_repo(self):
         repo = self.make_repo()
