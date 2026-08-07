@@ -2,7 +2,7 @@
 
 `akashic.py` is the half of akashic-record that must never be hallucinated: file scanning, the diff-to-stale-page mapping, citation verification, hash/anchor stamping, and deterministic rendering of the exact subagent prompt used to generate a page. It never calls an LLM, and the LLM side (catalog planning and page prose, described in [Skill Orchestration](./skill-orchestration.md)) never computes a hash, diff, line range, or prompt text. The script is stdlib-only Python 3.9+, exposes ten subcommands — `scan`, `stale`, `verify`, `anchor`, `prompt`, `remap`, `plan-check`, `plan-critic`, `audit`, `bless` — behind a `-C` directory flag, requires a git repository with at least one commit, and exits 0 on success, 1 on verification failures, 2 on usage or precondition errors. How these commands fit into the overall system is covered in [Project Overview](./index.md).
 
-Sources: [akashic.py:1-29](../../akashic.py#L1-L29), [akashic.py:109-118](../../akashic.py#L109-L118), [akashic.py:2219-2293](../../akashic.py#L2219-L2293)
+Sources: [akashic.py:1-29](../../akashic.py#L1-L29), [akashic.py:109-118](../../akashic.py#L109-L118), [akashic.py:2254-2334](../../akashic.py#L2254-L2334)
 
 ## scan — the planner's filtered view
 
@@ -34,7 +34,7 @@ Routing all consumers through the single function is what makes that one fix rea
 - **the orphaned-rescue clause** — the check that keeps a rewritten module classified stale rather than `orphaned` saw no surviving in-scope file, and the skill's remediation for `orphaned` deletes the page and its catalog entry;
 - **coverage and scope warnings** — `uncovered` and `verify`'s out-of-scope citation warning both take the same path.
 
-Sources: [akashic.py:191-203](../../akashic.py#L191-L203), [akashic.py:206-222](../../akashic.py#L206-L222), [akashic.py:712-716](../../akashic.py#L712-L716), [akashic.py:1171-1185](../../akashic.py#L1171-L1185), [akashic.py:1197-1208](../../akashic.py#L1197-L1208), [akashic.py:1304-1306](../../akashic.py#L1304-L1306), [akashic.py:1846-1858](../../akashic.py#L1846-L1858)
+Sources: [akashic.py:191-203](../../akashic.py#L191-L203), [akashic.py:206-222](../../akashic.py#L206-L222), [akashic.py:712-716](../../akashic.py#L712-L716), [akashic.py:1171-1185](../../akashic.py#L1171-L1185), [akashic.py:1197-1208](../../akashic.py#L1197-L1208), [akashic.py:1304-1306](../../akashic.py#L1304-L1306), [akashic.py:1889-1901](../../akashic.py#L1889-L1901)
 
 ## stale — bucket semantics
 
@@ -166,7 +166,7 @@ That carve-out was not merely inelegant, it could lose work. Hand-editing is two
 
 `bless_pages` validates every id and every page file before mutating anything: an id absent from the catalog and a page whose `wiki/<id>.md` was never written both die with exit 2, leaving the catalog untouched. Those are the two ways the hand-edit went wrong in practice — a typo'd id, and blessing a page a subagent never actually produced.
 
-Sources: [akashic.py:1359-1390](../../akashic.py#L1359-L1390), [akashic.py:1393-1399](../../akashic.py#L1393-L1399), [akashic.py:2266-2282](../../akashic.py#L2266-L2282)
+Sources: [akashic.py:1359-1390](../../akashic.py#L1359-L1390), [akashic.py:1393-1399](../../akashic.py#L1393-L1399), [akashic.py:2305-2323](../../akashic.py#L2305-L2323)
 
 ## plan-check — the gate on the plan, not the output
 
@@ -197,7 +197,10 @@ Nothing downstream catches those. `verify` proves a citation resolves, never tha
 
 So `render_plan_critic` renders the review prompt and an LLM performs the review. The division of labor is untouched: this function is string templating over the catalog and the filesystem in exactly the `render_prompt` idiom, and makes no judgment. It carries every page's id, title, goal, scope globs, expanded file list and line total, and then `plan_check`'s findings under a heading marking them as already established — so the judge spends its effort on meaning rather than re-deriving arithmetic. That block is omitted entirely when the plan is clean, because an empty findings section is boilerplate that teaches a reader to skim.
 
-Two details are load-bearing:
+Two details are load-bearing, and a third arrived from the field:
+
+- **A pass is one sample, not a measurement.** Two runs over an unchanged catalog disagreed in both directions — five pages called defective in the first were called fine in the second, while the second found two real defects the first had missed. That is inherent to an LLM judging meaning and is the price of the only check that can read code and form an opinion, but a report ending "13 pages need edits" reads as a score. The prompt now says otherwise, and instructs the judge to state its count as a sample.
+
 
 - **One prompt for the whole catalog, not one per page.** Two of the four judgments — collision, and redundant scope in substance — are cross-page, and a per-page reviewer would be structurally blind to them. A catalog is 8–30 pages, so a single adversarial pass costs a fraction of one page's generation.
 - **Truncation is always announced.** Long file lists are cut at `CRITIC_FILE_SAMPLE` with the remaining count and the exact command to get the rest, while the true total is still stated on the `files:` line. A silently shortened list would produce a confident "unreachable" verdict about a file the page can actually cite.
@@ -206,7 +209,7 @@ The read-only mandate is rendered here too, extended to forbid editing the catal
 
 Run against this repo's own catalog it found three real defects on its first use — `index` promising "the three artifacts" when there are four, `deterministic-core`'s goal naming four of eight commands, and `skill-orchestration` misnaming the fourth hard rule.
 
-Sources: [akashic.py:1692-1692](../../akashic.py#L1692-L1692), [akashic.py:1695-1823](../../akashic.py#L1695-L1823), [akashic.py:1826-1828](../../akashic.py#L1826-L1828)
+Sources: [akashic.py:1692-1692](../../akashic.py#L1692-L1692), [akashic.py:1695-1831](../../akashic.py#L1695-L1831), [akashic.py:1834-1863](../../akashic.py#L1834-L1863)
 
 ## prompt — deterministic subagent-prompt rendering
 
@@ -222,7 +225,7 @@ The rendered text closes with a **read-only mandate**: read and cite these files
 
 `cmd_prompt` requires a page id argument and dies with exit 2 if the id is not in the catalog, via the same `die()` path every other precondition failure uses.
 
-Sources: [akashic.py:1840-1843](../../akashic.py#L1840-L1843), [akashic.py:1846-1858](../../akashic.py#L1846-L1858), [akashic.py:1861-1864](../../akashic.py#L1861-L1864), [akashic.py:1867-1988](../../akashic.py#L1867-L1988), [akashic.py:1991-1995](../../akashic.py#L1991-L1995)
+Sources: [akashic.py:1883-1886](../../akashic.py#L1883-L1886), [akashic.py:1889-1901](../../akashic.py#L1889-L1901), [akashic.py:1904-1907](../../akashic.py#L1904-L1907), [akashic.py:1910-2031](../../akashic.py#L1910-L2031), [akashic.py:2034-2038](../../akashic.py#L2034-L2038)
 
 ## audit — the only check that asks whether the prose is true
 
@@ -232,19 +235,21 @@ Everything above checks the *scaffolding* of a claim. `verify` proves a citation
 
 `render_audit_prompt` builds the judge prompt in the `render_prompt` idiom. The judge gets the claims and the evidence and nothing else: no repository access, and **evidence labelled `[E1]`, `[E2]` rather than by filename**. That is the load-bearing choice in the whole command. Every planning defect this project has recorded came from reasoning off a name — a page promised "site types and parent/child relationships" because a migration was called `add-siteType-enums.js`, where no parent column existed anywhere and the enum was used by no column, on a different table. A judge shown `services/auth/index.ts` fills gaps with what an auth service usually does; shown `[E1]` it can only read what is in front of it. The label-to-path mapping stays in the extract JSON, so a finding remains actionable: the orchestrator translates, not the judge.
 
+A third detail arrived from the field: **the judge must not grade attribution**. Withholding filenames has a cost that only showed up on a real page — a sentence saying a fact comes from the README makes a claim the judge is structurally unable to check, and it reported every such attribution as unsupported, turning roughly 3-of-9 into 1-of-9. Handing it the `Sources:` paths was rejected: a filename is precisely the input the labelling exists to withhold, and the citation gate already proves every cited path resolves. One instruction fixes it instead, and its section count carries the same sampling caveat as the plan critic's.
+
 Two more details earn their place. The prompt instructs the judge to **default to refuting** and to separate **contradicted** (the evidence shows otherwise), **unsupported** (the evidence is silent), and **overstated** (broader than what is shown) — a judge that reports only what it can disprove reports almost nothing, and the middle verdict is the common one. And a section citing nothing renders as `EVIDENCE: none` rather than being dropped, because prose resting on nothing at all is the strongest available finding.
 
 The division of labor is untouched: this half renders prompts and slices bytes, and calls no LLM.
 
-`--out` writes the prompt to a file and prints a dispatch line instead of the prompt itself. Evidence spans are verbatim source, so these get large — one page here renders 224KB — and printing it costs that twice, once into the orchestrator's context and once into the judge's, with the orchestrator gaining nothing from having read it. Handing over a path is not weaker: the judge is a subagent with tools, and its blindness has always been a contract rather than a sandbox. It refuses to write inside `.akashic/`, where a scratch file that size would surface as `uncovered` and be committed with the wiki.
+`--out` writes the prompt to a file and prints a dispatch line instead of the prompt itself; `plan-critic` shares the same helper, having cost 49KB read-then-pasted before it did. Evidence spans are verbatim source, so these get large — one page here renders 224KB — and printing it costs that twice, once into the orchestrator's context and once into the judge's, with the orchestrator gaining nothing from having read it. Handing over a path is not weaker: the judge is a subagent with tools, and its blindness has always been a contract rather than a sandbox. It refuses to write inside `.akashic/`, where a scratch file that size would surface as `uncovered` and be committed with the wiki.
 
 On its first run against this repo's own [Maintenance Loop](./maintenance-loop.md) page it found one. The claim "a test pins the direction" sat on a page scoped to `bin/*`, which cannot cite `test_akashic.py` at all — true, and resting on nothing that page offers.
 
-Sources: [akashic.py:2000-2020](../../akashic.py#L2000-L2020), [akashic.py:2023-2031](../../akashic.py#L2023-L2031), [akashic.py:2034-2077](../../akashic.py#L2034-L2077), [akashic.py:2084-2100](../../akashic.py#L2084-L2100), [akashic.py:2103-2172](../../akashic.py#L2103-L2172), [akashic.py:2175-2214](../../akashic.py#L2175-L2214)
+Sources: [akashic.py:2043-2063](../../akashic.py#L2043-L2063), [akashic.py:2066-2074](../../akashic.py#L2066-L2074), [akashic.py:2077-2120](../../akashic.py#L2077-L2120), [akashic.py:2127-2143](../../akashic.py#L2127-L2143), [akashic.py:2146-2226](../../akashic.py#L2146-L2226), [akashic.py:2229-2268](../../akashic.py#L2229-L2268)
 
 ## What the test suite proves
 
-`test_akashic.py` is 120 stdlib `unittest` tests over throwaway git-repo fixtures, one check per deterministic component. The invariants it pins down:
+`test_akashic.py` is 124 stdlib `unittest` tests over throwaway git-repo fixtures, one check per deterministic component. The invariants it pins down:
 
 - **Scan filtering**: a source file survives while a binary, a lockfile, an excluded glob, and `.akashic/` itself are all dropped.
 - **The canonical incremental mapping**: edit `f1`, delete `f2`, add `f3` yields exactly `{stale: [a], orphaned: [b], uncovered: [f3]}` with empty `edited`/`missing`.
@@ -263,6 +268,7 @@ Sources: [akashic.py:2000-2020](../../akashic.py#L2000-L2020), [akashic.py:2023-
 - **Plan-check's shape findings**: a scope matching nothing is separated from a page with no scope at all; a scope inside a sibling's is reported once as a subset rather than twice; every overlapping pair is listed and ranked by duplicated lines, so one enormous shared file outranks two tiny ones, and growing an unrelated page never silences a pair whose intersection did not change; the split rule fires at the documented threshold; empty goals and duplicate titles are caught; line totals come back biggest first; and scope expansion drops the same noise a subagent's citable list would, so the check measures the real fan-out input.
 - **The critic prompt carries what a judge needs**: every goal and scope reaches it, all four judgments are stated, the scope is named as the citable boundary, `plan-check`'s findings are handed over as already established and the block is absent on a clean plan, an unmatched scope is called out inline, a truncated file list always states the remainder and how to get it, the read-only mandate is present, and an empty catalog exits 2 rather than rendering a review of nothing.
 - **`--out` keeps a large prompt out of the orchestrator**: the file holds the evidence, stdout holds only the dispatch line, and writing inside `.akashic/` is refused outright.
+- **Both judges are told their verdict is a sample**, and the refuter is told not to grade attribution — instructions whose absence would be silent, so each is asserted directly. `plan-critic --out` is covered by the same pair of tests as the audit's.
 - **The audit stays blind**: the rendered prompt never names a file while the extract still carries the label-to-path mapping, evidence is the exact cited bytes, the claim drops its heading and its `Sources:` paragraph, labels are unique across a page, the refute-by-default instruction and all three verdict words are present, a section citing nothing renders as `EVIDENCE: none` rather than vanishing, and an unknown page id exits 2 on both halves.
 - **The loop's decision layer**: repo-list parsing, all four verdicts (including that an `edited`-only repo is never handed to an LLM and a drift-only repo never reaches a model), and the gate run against real fixture repos. Both directions of the dry-run notification are pinned too: a repo with outstanding work notifies rather than only printing, and a clean one stays silent. The `claude -p` call is deliberately uncovered, since a stubbed test would only assert the stub.
 - **Drift and remap**: a shift above the cited lines is reported as `drifted` rather than `stale`, `remap` moves both halves of the citation to the right numbers, a fenced example is left untouched, and a hand-edited page is never rewritten.
@@ -276,6 +282,6 @@ Sources: [akashic.py:2000-2020](../../akashic.py#L2000-L2020), [akashic.py:2023-
 - **`--update` renders what changed**: a stale page's prompt names its modified dependencies and forbids a changelog, a restated page's names whether the goal moved or files newly entered scope, and a page with nothing outstanding gets no addendum at all.
 - **`prompt` rendering**: the citable list holds only tracked, in-scope files and omits an out-of-scope sibling file; scope expansion applies the scan filters, so a `src/**` scope offers `src/app.py` but never `bundle.min.js`, `package-lock.json`, an excluded `.snap`, or a binary; siblings and the page `goal` appear verbatim; the read-only mandate is rendered into every prompt; an untracked `CLAUDE.md` is named alongside a "NOT tracked by git" warning, and that paragraph is absent when no such doc exists; an unknown page id exits 2.
 
-Sources: [test_akashic.py:1-26](../../test_akashic.py#L1-L26), [test_akashic.py:29-86](../../test_akashic.py#L29-L86), [test_akashic.py:89-219](../../test_akashic.py#L89-L219), [test_akashic.py:221-271](../../test_akashic.py#L221-L271), [test_akashic.py:273-367](../../test_akashic.py#L273-L367), [test_akashic.py:369-412](../../test_akashic.py#L369-L412), [test_akashic.py:508-571](../../test_akashic.py#L508-L571), [test_akashic.py:574-624](../../test_akashic.py#L574-L624), [test_akashic.py:627-704](../../test_akashic.py#L627-L704), [test_akashic.py:765-855](../../test_akashic.py#L765-L855), [test_akashic.py:706-763](../../test_akashic.py#L706-L763), [test_akashic.py:904-1042](../../test_akashic.py#L904-L1042), [test_akashic.py:1044-1100](../../test_akashic.py#L1044-L1100), [test_akashic.py:1102-1330](../../test_akashic.py#L1102-L1330), [test_akashic.py:1333-1486](../../test_akashic.py#L1333-L1486), [test_akashic.py:1489-1575](../../test_akashic.py#L1489-L1575), [test_akashic.py:1578-1706](../../test_akashic.py#L1578-L1706), [test_akashic.py:1709-1855](../../test_akashic.py#L1709-L1855)
+Sources: [test_akashic.py:1-26](../../test_akashic.py#L1-L26), [test_akashic.py:29-86](../../test_akashic.py#L29-L86), [test_akashic.py:89-219](../../test_akashic.py#L89-L219), [test_akashic.py:221-271](../../test_akashic.py#L221-L271), [test_akashic.py:273-367](../../test_akashic.py#L273-L367), [test_akashic.py:369-412](../../test_akashic.py#L369-L412), [test_akashic.py:508-571](../../test_akashic.py#L508-L571), [test_akashic.py:574-624](../../test_akashic.py#L574-L624), [test_akashic.py:627-704](../../test_akashic.py#L627-L704), [test_akashic.py:765-855](../../test_akashic.py#L765-L855), [test_akashic.py:706-763](../../test_akashic.py#L706-L763), [test_akashic.py:904-1042](../../test_akashic.py#L904-L1042), [test_akashic.py:1044-1100](../../test_akashic.py#L1044-L1100), [test_akashic.py:1102-1330](../../test_akashic.py#L1102-L1330), [test_akashic.py:1333-1486](../../test_akashic.py#L1333-L1486), [test_akashic.py:1489-1614](../../test_akashic.py#L1489-L1614), [test_akashic.py:1617-1757](../../test_akashic.py#L1617-L1757), [test_akashic.py:1760-1906](../../test_akashic.py#L1760-L1906)
 
-*Generated from commit `0332c104` on 2026-08-07.*
+*Generated from commit `2c8e4709` on 2026-08-07.*

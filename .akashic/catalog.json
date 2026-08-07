@@ -30,7 +30,7 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:ff5b0b4e85a3c5b9479083269f76567b4c0df1e0763d1aa87837875ec2460161",
+      "hash": null,
       "frozen": false,
       "blobs": {
         "CLAUDE.md": "dd1e3db65ff8f4b07f82306dbaaafa4efa430c8f",
@@ -262,7 +262,7 @@
         "test_akashic.py"
       ],
       "status": "done",
-      "hash": "sha256:d7043718ac2ff66cb26513f3275edabb0f5c9c91c8c7471b82d9d58966723a63",
+      "hash": null,
       "frozen": false,
       "blobs": {
         "akashic.py": "f05531cd8bf22d280e6c4a33e9653cf78b85ae12",
@@ -735,7 +735,7 @@
         "SKILL.md"
       ],
       "status": "done",
-      "hash": "sha256:f5439689ec199d6bbd663616b2a1e62b3c1be31b4a61d8870c9c7cb9d03dc9dc",
+      "hash": null,
       "frozen": false,
       "blobs": {
         "SKILL.md": "86939aa1c4b142cb5c72f93f42bfab7b3f1c4b8e"
