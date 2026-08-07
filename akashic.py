@@ -1217,8 +1217,30 @@ WORK_BUCKETS = ("stale", "edited", "orphaned", "uncovered", "missing",
                 "planned", "drifted", "restated")
 
 
-def cmd_stale(root, check=False):
+def bucket_ids(report, bucket):
+    """Page ids in one bucket, newline-ready.
+
+    Acting on `stale` means iterating ids, and without this every run has
+    hand-written a JSON-to-shell adapter -- three so far, one of which hit
+    zsh's refusal to word-split an unquoted expansion and passed twelve ids
+    as a single string. The tool created that need; it should meet it."""
+    out = []
+    for item in report.get(bucket) or []:
+        out.append(item["id"] if isinstance(item, dict) else item)
+    return out
+
+
+def cmd_stale(root, check=False, ids=None):
     report = compute_stale(root)
+    if ids is not None:
+        if ids not in WORK_BUCKETS:
+            # Loudly, not as an empty list: a typo that yields no output is
+            # indistinguishable from "nothing to do", which is the silent
+            # success this project rejects everywhere else.
+            die(f"unknown bucket \"{ids}\"; valid: {', '.join(WORK_BUCKETS)}")
+        for page_id in bucket_ids(report, ids):
+            print(page_id)
+        return 0
     print(json.dumps(report, indent=2))
     if not check:
         return 0
@@ -2056,11 +2078,23 @@ def render_prompt(root, catalog, page_id, update=False):
     return "\n".join(lines)
 
 
-def cmd_prompt(root, page_id, update=False):
+def cmd_prompt(root, page_id, update=False, out=None):
     if not page_id:
         die("usage: akashic.py prompt <page-id>")
-    print(render_prompt(root, load_catalog(root), page_id, update=update))
-    return 0
+    text = render_prompt(root, load_catalog(root), page_id, update=update)
+    if out is None:
+        print(text)
+        return 0
+    # The last command to get this, and the one dispatched most: once per
+    # regenerated page, twelve times in a single real run, where reading and
+    # re-pasting cost roughly 40k tokens.
+    #
+    # There is no blindness to protect here -- a generation subagent needs
+    # repo access anyway -- which is exactly why it belongs in the tool. An
+    # orchestrator would otherwise have to re-derive that "handing over a
+    # path is safe here" at every call site, under time pressure, and a rule
+    # that depends on being re-derived is a rule that eventually is not.
+    return write_prompt_out(root, text, out, f"generate {page_id}")
 
 
 # ----------------------------------------------------------------------- audit
@@ -2288,6 +2322,10 @@ def main(argv=None):
         "stale",
         help="JSON report: stale/edited/orphaned/uncovered/missing/planned pages")
     stale_parser.add_argument(
+        "--ids", metavar="BUCKET",
+        help="print one page id per line for BUCKET and nothing else, so a "
+             "shell loop needs no JSON parser")
+    stale_parser.add_argument(
         "--check", action="store_true",
         help="exit 1 when any bucket is non-empty (zero-token gate for a runner)")
     sub.add_parser("verify", help="check pages, citations, and catalog invariants")
@@ -2295,6 +2333,10 @@ def main(argv=None):
     prompt_parser = sub.add_parser(
         "prompt", help="render the exact subagent prompt for one catalog page id")
     prompt_parser.add_argument("page_id")
+    prompt_parser.add_argument(
+        "--out", metavar="PATH",
+        help="write the prompt to PATH and print a dispatch line instead, so "
+             "a large prompt does not pass through the orchestrator twice")
     prompt_parser.add_argument(
         "--update", action="store_true",
         help="add the regeneration context (what changed, or how the brief "
@@ -2343,11 +2385,12 @@ def main(argv=None):
     if args.command == "plan-critic":
         return cmd_plan_critic(root, out=args.out)
     if args.command == "prompt":
-        return cmd_prompt(root, args.page_id, update=args.update)
+        return cmd_prompt(root, args.page_id, update=args.update,
+                          out=args.out)
     if args.command == "bless":
         return cmd_bless(root, args.page_ids, mark_done=args.done)
     if args.command == "stale":
-        return cmd_stale(root, check=args.check)
+        return cmd_stale(root, check=args.check, ids=args.ids)
     command = {"scan": cmd_scan, "remap": cmd_remap,
                "plan-check": cmd_plan_check,
 
