@@ -2169,6 +2169,15 @@ def audit_bundle(root, page, body):
                 evidence.append({
                     "label": f"E{label_no}",
                     "path": path, "start": span[0], "end": span[1],
+                    # How much of the file the judge is NOT seeing. A line
+                    # count is not a filename, so this leaks nothing the
+                    # labelling exists to withhold -- and without it every
+                    # claim that a file *lacks* something is unfalsifiable
+                    # from an excerpt, which scored a safety-properties page
+                    # at 1 of 13 sections sound.
+                    "file_lines": line_count(
+                        (root / path).read_bytes()) if (root / path).is_file()
+                    else None,
                     "text": text,
                 })
         claim = section_claim(body, start, end)
@@ -2245,6 +2254,18 @@ def render_audit_prompt(root, page_id):
         "contradict is not supported -- say so. Being unable to find fault is "
         "a finding too, but it is the rarer one.",
         "",
+        "**An excerpt cannot prove absence.** Each label says how large its "
+        "file is and how much of it you are not seeing. A claim that a file "
+        "*lacks* something -- no guard, no environment check, read-only, no "
+        "companion script -- is not refutable from an excerpt, and marking it "
+        "unsupported on those grounds says nothing about whether it is true. "
+        "When a claim turns on absence, say so explicitly and name what would "
+        "settle it (an exhaustive search of the whole file, say), rather than "
+        "counting it against the page. If the page states the method by which "
+        "it checked -- grepping for every write verb, for instance -- judge "
+        "whether that method would establish the claim, not whether the "
+        "excerpt does.",
+        "",
         "**Do not judge attribution.** Because the labels hide filenames, you "
         "cannot tell a correctly remembered filename from an invented one, so "
         "a sentence saying a fact comes from a named file is out of scope for "
@@ -2260,8 +2281,16 @@ def render_audit_prompt(root, page_id):
         if section["evidence"]:
             lines.append("EVIDENCE:")
             for item in section["evidence"]:
-                lines += ["", f"[{item['label']}]", "```",
+                shown = item["end"] - item["start"] + 1
+                total = item["file_lines"]
+                where = (f"lines {item['start']}-{item['end']} of a "
+                         f"{total}-line file" if total
+                         else f"lines {item['start']}-{item['end']}")
+                lines += ["", f"[{item['label']}] {where}", "```",
                           item["text"], "```"]
+                if total and shown < total:
+                    lines.append(
+                        f"({total - shown} lines of this file are not shown.)")
         else:
             lines.append("EVIDENCE: none -- this section cites nothing.")
         lines.append("")
