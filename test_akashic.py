@@ -1198,6 +1198,76 @@ class TestReviewRegressions(RepoCase):
             self.assertNotIn(dropped, out,
                              f"{dropped} must not be offered as a citable file")
 
+    def test_update_prompt_names_what_changed(self):
+        """SKILL.md required this sentence and `prompt` never emitted it, so
+        the orchestrator joined `stale` to the prompt by hand -- the exact
+        hand-assembly the same file warns causes bugs."""
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "def a():\n    return 1\n")
+        self.write(repo, ".akashic/wiki/p.md",
+                   "# P\n\n## S\n\nDocs.\n\n"
+                   "Sources: [src/a.py:1-2](../../src/a.py#L1-L2)\n")
+        self.catalog(repo, [self.page("p", scope=["src/*"])])
+        self.commit(repo)
+        root = akashic.repo_root(repo)
+        akashic.anchor_repo(root)
+        self.commit(repo, "anchor")
+        self.write(repo, "src/a.py", "def a():\n    return 99\n")
+        self.commit(repo, "change")
+
+        plain = akashic.render_prompt(root, akashic.load_catalog(root), "p")
+        self.assertNotIn("already existed", plain)
+        upd = akashic.render_prompt(root, akashic.load_catalog(root), "p",
+                                    update=True)
+        self.assertIn("already existed", upd)
+        self.assertIn("src/a.py", upd)
+        self.assertIn("Do not append", upd)
+
+    def test_update_prompt_covers_a_changed_brief_too(self):
+        """Since `restated` there are two reasons to regenerate. A prompt
+        naming only changed dependencies would send a subagent hunting for
+        code changes that are not there."""
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "def a():\n    return 1\n")
+        self.write(repo, "src/b.py", "def b():\n    return 2\n")
+        self.write(repo, ".akashic/wiki/p.md",
+                   "# P\n\n## S\n\nDocs.\n\n"
+                   "Sources: [src/a.py:1-2](../../src/a.py#L1-L2)\n")
+        self.catalog(repo, [self.page("p", scope=["src/a.py"])])
+        self.commit(repo)
+        root = akashic.repo_root(repo)
+        akashic.anchor_repo(root)
+        self.commit(repo, "anchor")
+        path = repo / ".akashic" / "catalog.json"
+        data = json.loads(path.read_text())
+        data["pages"][0]["scope"] = ["src/*"]
+        data["pages"][0]["goal"] = "document a and b"
+        path.write_text(json.dumps(data, indent=2))
+        self.commit(repo, "restate")
+
+        upd = akashic.render_prompt(root, akashic.load_catalog(root), "p",
+                                    update=True)
+        self.assertIn("goal was rewritten", upd)
+        self.assertIn("newly fall inside this page's scope", upd)
+        self.assertIn("src/b.py", upd)
+
+    def test_update_prompt_is_silent_for_a_fresh_page(self):
+        root = self.prompt_repo() if hasattr(self, "prompt_repo") else None
+        repo = self.make_repo()
+        self.write(repo, "src/a.py", "def a():\n    return 1\n")
+        self.write(repo, ".akashic/wiki/p.md",
+                   "# P\n\n## S\n\nDocs.\n\n"
+                   "Sources: [src/a.py:1-2](../../src/a.py#L1-L2)\n")
+        self.catalog(repo, [self.page("p", scope=["src/*"])])
+        self.commit(repo)
+        root = akashic.repo_root(repo)
+        akashic.anchor_repo(root)
+        self.commit(repo, "anchor")
+        upd = akashic.render_prompt(root, akashic.load_catalog(root), "p",
+                                    update=True)
+        self.assertNotIn("already existed", upd)
+        self.assertNotIn("Do not append", upd)
+
     def test_prompt_unknown_page_id_fails(self):
         repo = self.make_repo()
         self.write(repo, "src/app.py", "a\n")
