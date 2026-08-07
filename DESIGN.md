@@ -572,6 +572,48 @@ need was wrong in both directions: (a) needed a `ranges` field, and (b) needs pe
 hashes. Neither existed.
 ```
 
+## 5b. Claim audit (on-demand, never a gate)
+
+Owner decision (2026-07-29): the semantic claim audit is **on-demand only**. It is not
+part of the standing update flow, never gates `anchor`, and never runs on a schedule.
+Reach for it when a page smells wrong.
+
+Everything else in this design checks the *scaffolding* of a claim. `verify` proves a
+citation resolves; the anchored-content warning proves it still points where it was
+anchored; the identifier warning proves a named symbol exists somewhere the section cites.
+None of them can say whether the sentence above the citation is true. The audit is the one
+thing that asks.
+
+**`audit extract [--page <id>]`** emits deterministic JSON: per H2 section, the claim
+prose with its heading and its `Sources:` paragraphs removed, plus the exact bytes of
+every cited span (`citation_span` clamping the +1 trailing-newline phantom). It extracts
+and never judges. Sections are cut with the same `h2_sections` splitter the identifier
+check uses — one definition, not three.
+
+**`audit prompt <id>`** renders the blind refuter prompt in the `render_prompt` idiom. The
+judge gets the claims and the evidence and nothing else: no repository access, and
+**evidence is labelled `[E1]`, `[E2]` rather than by filename**. That is the load-bearing
+choice. Every planning defect that motivated this work came from reasoning off a name — a
+page promised "site types and parent/child relationships" because a migration was called
+`add-siteType-enums.js`, where no parent column existed anywhere and the enum was used by
+no column, on a different table. A judge shown `services/auth/index.ts` fills gaps with
+what an auth service usually does; shown `[E1]` it can only read what is in front of it.
+The label→path mapping travels in the extract JSON, so a finding stays actionable: the
+orchestrator translates, not the judge.
+
+The prompt instructs the judge to **default to refuting** and to separate **contradicted**
+(the evidence shows otherwise), **unsupported** (the evidence is silent), and
+**overstated** (broader than what is shown). A section citing nothing is rendered with
+`EVIDENCE: none` rather than dropped, because prose resting on nothing at all is the
+strongest available finding.
+
+The division of labor (§2) holds exactly: the script renders prompts and extracts bytes,
+and never calls an LLM; the LLM judges, and never computes a range.
+
+On its first run against this repo's own `maintenance-loop` page it found one: the claim
+"a test pins the direction" in a page scoped to `bin/*`, which cannot cite `test_akashic.py`
+at all. True, and resting on nothing the page offers.
+
 ## 6. Agent consumption (no MCP server)
 
 DeepWiki's programmatic surface is exactly three MCP tools. For a repo-committed wiki

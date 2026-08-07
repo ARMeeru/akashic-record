@@ -46,6 +46,8 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | `remap` | shift citations whose lines moved without changing; no LLM | summary |
 | `plan-check` | shape checks on the catalog before a fan-out | JSON + warnings; always exit 0 |
 | `plan-critic` | render the adversarial plan-review prompt for the whole catalog | text — dispatch it verbatim |
+| `audit extract [--page <id>]` | claim/evidence bundles per H2 section | JSON |
+| `audit prompt <id>` | render the blind refuter prompt for one page | text — dispatch it verbatim |
 | `bless <id>...` | mark pages as tool-written after regenerating them (`hash` → null); `--done` also flips `status` | summary |
 
 Exit codes: 0 ok, 1 verification failure, 2 precondition/usage error (e.g. no git repo,
@@ -200,6 +202,26 @@ no commits, too many files — relay these to the user verbatim; they are action
 3. `verify` → fix → `anchor`.
 4. Report per page: what changed, what was done — phrased so it can serve as the body
    of the wiki commit message.
+
+## Flow: audit (on demand only)
+
+Reach for this when a page smells wrong — never on a schedule, never as a gate. Run
+`audit prompt <id>` and dispatch the text verbatim to **one subagent with no other
+context**. It renders every claim on the page beside the exact bytes that claim cites,
+with the files labelled `[E1]`, `[E2]` instead of named, so the judge cannot fill gaps
+with what a file of that name usually contains — the failure mode behind every planning
+defect this project has recorded.
+
+It answers the one question nothing else can. `verify` proves a citation resolves, the
+anchored-content warning proves it still points where it was anchored, the identifier
+warning proves a named symbol exists somewhere the section cites; none of them can say
+whether the sentence is true.
+
+Translate findings back to paths with `audit extract --page <id>`, which carries the
+label→path mapping. Then fix the prose, `bless <id>`, `verify`, `anchor`. Findings are
+usually one of three: **contradicted**, **unsupported** (the commonest — a true claim
+the page cannot support from its own scope, which means widening the scope or dropping
+the claim), or **overstated**.
 
 ## Flow: status
 
