@@ -329,6 +329,17 @@ Standing generation instructions that matter:
     partial wiki is a valid state, per §5, and pages routinely cross-link the
     full sibling list before every sibling is generated); a link to an id absent
     from the catalog entirely is the real bug and still fails verify.
+  - **identifier existence** (warning): a backticked, identifier-shaped token in an H2
+    section that appears in none of the files that section cites is surfaced. `verify`
+    proves a citation resolves; it cannot prove the prose above it is true, and this
+    closes the narrowest and most embarrassing part of that gap — a page naming a
+    function that exists nowhere it points at. Deliberately a warning: it is a heuristic
+    over prose, and a heuristic that blocked `anchor` would eventually block a correct
+    page. The shape test is narrow (a call, snake_case, camelCase, a dotted or scoped
+    name) and filenames are excluded, because a warning per backticked English word
+    would train the operator to ignore the class. The search is the whole cited file
+    rather than the cited span: a page legitimately names a symbol defined elsewhere in
+    the same module, and the aim is catching invention, not policing line numbers.
   Page ids are validated as slugs at catalog load in every command — an id is a
   path component, so a non-slug id is a traversal vector, rejected at the trust
   boundary.

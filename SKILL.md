@@ -40,7 +40,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | `scan` | filtered file list with line counts (planner input) | a `# N files, M lines` header, then `lines<TAB>path` per file |
 | `stale` | staleness report | JSON: `stale/edited/orphaned/uncovered/missing/planned/drifted` |
 | `stale --check` | same report, plus exit 1 when any bucket is non-empty | zero-token gate for a scheduled runner |
-| `verify` | check pages, citations, catalog invariants | errors, exit 1 if any |
+| `verify` | check pages, citations, catalog invariants; warn on identifiers appearing in no cited file | errors, exit 1 if any |
 | `anchor` | record deps + hashes, stamp anchor commit, render TOC | summary |
 | `prompt <id>` | render the exact subagent prompt for one catalog page | text — dispatch it verbatim |
 | `remap` | shift citations whose lines moved without changing; no LLM | summary |
