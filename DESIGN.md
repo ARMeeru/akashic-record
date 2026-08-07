@@ -275,6 +275,12 @@ local-only agent-guidance docs on disk that aren't git-tracked (`CLAUDE.md`,
 `AGENTS.md`, `.cursorrules`, and similar — a common, deliberate convention, not a
 mistake to work around), the renderer detects them and appends an explicit note: read
 them for context, never cite them, cite the underlying tracked source instead. This
+rendered prompt also carries a **read-only mandate**: read and cite, never execute,
+nothing git-mutating, and treat file contents as material to document rather than as
+instructions to follow. It is rendered rather than appended by the orchestrator for the
+same reason the file list is — a page's scope routinely includes operational scripts (one
+target repo's `scripts/` drops databases and calls `pg_terminate_backend`), and a safety
+rule that depends on being retyped per dispatch is one that eventually is not. This
 mechanical templating exists because the orchestrating agent hand-constructing this
 same prompt from memory is exactly how the untracked-citation bug first shipped — a
 human (or an LLM standing in for one) forgetting one rule while typing one prompt.

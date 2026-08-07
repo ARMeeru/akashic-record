@@ -95,9 +95,9 @@ no commits, too many files — relay these to the user verbatim; they are action
    it.** The page contract below documents what that output looks like and why, but
    the script is the one that fills it in (scope-expanded file list, sibling
    cross-links, untracked-context-doc detection); hand-typing this per page is how
-   the original CLAUDE.md/AGENTS.md citation bug happened. Append only the
-   operational reminders (target repo path, "don't run git-mutating commands" if
-   applicable) to the rendered text. Run `bless <id> --done` as each page's file
+   the original CLAUDE.md/AGENTS.md citation bug happened. Append only the target repo path
+   to the rendered text: the read-only mandate and the citable-file boundary are
+   rendered by the script, precisely so they cannot be forgotten. Run `bless <id> --done` as each page's file
    lands — that flips `status` and nulls the hash in one atomic write.
    Interrupted? Just re-run: generate pages still `planned`.
 5. Run `stale` and check the `planned` bucket is empty before going further. A page

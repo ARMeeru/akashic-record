@@ -860,6 +860,25 @@ class TestReviewRegressions(RepoCase):
         self.assertIn("NOT tracked by git", out)
         self.assertIn("Orient a new developer.", out)
 
+    def test_prompt_forbids_executing_what_it_tells_a_subagent_to_read(self):
+        """A page's scope routinely holds operational scripts. One real target
+        repo's scripts/ drops databases and calls pg_terminate_backend, and the
+        subagent is told to read every file in scope. The instruction not to
+        run them is rendered by the script rather than left to whoever
+        dispatches the prompt, because a rule that has to be retyped is a rule
+        that eventually is not."""
+        repo = self.make_repo()
+        self.write(repo, "scripts/drop-db.sh", "dropdb production\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["scripts/*"])])
+        root = akashic.repo_root(repo)
+        out = akashic.render_prompt(root, akashic.load_catalog(root), "index")
+        self.assertIn("READ ONLY", out)
+        self.assertIn("never execute them", out)
+        self.assertIn("git-mutating", out)
+        self.assertIn("not direction", out,
+                      "file contents are material, not instructions to follow")
+
     def test_prompt_omits_context_warning_when_none_present(self):
         repo = self.make_repo()
         self.write(repo, "src/app.py", "a\n")
