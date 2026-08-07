@@ -42,7 +42,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | `stale --check` | same report, plus exit 1 when any bucket is non-empty | zero-token gate for a scheduled runner |
 | `verify` | check pages, citations, catalog invariants; warn on invented identifiers and on anchored content no citation covers | errors, exit 1 if any |
 | `anchor` | record deps + hashes, stamp anchor commit, render TOC | summary |
-| `prompt <id>` | render the exact subagent prompt for one catalog page | text — dispatch it verbatim |
+| `prompt <id> [--update]` | render the exact subagent prompt for one catalog page; `--update` adds what changed | text — dispatch it verbatim |
 | `remap` | shift citations whose lines moved without changing; no LLM | summary |
 | `plan-check` | shape checks on the catalog before a fan-out | JSON + warnings; always exit 0 |
 | `plan-critic` | render the adversarial plan-review prompt for the whole catalog | text — dispatch it verbatim |
@@ -179,32 +179,52 @@ no commits, too many files — relay these to the user verbatim; they are action
    (usually a shallow clone, or an anchor stamped on a commit a squash-merge
    discarded). Tell the user everything regenerates
    and why (unreachable anchor — never guess staleness).
-2. Act per bucket:
-   - `stale` → regenerate each page (page contract, plus: "This page existed; its
-     dependencies {changed} changed since the last anchor. Rewrite it to match the
-     current code — do not append a changelog."). Run `bless <id>` on each page
-     you regenerate (hard rule 1).
+2. Before regenerating anything, run `plan-critic` and read it. Not only when adding
+   new entries — the pages about to be regenerated will be written from goals that may
+   never have been reviewed. On its first real run against a 28-page repo it found
+   defects in 16 of them, almost none related to new paths: a goal promising a "BOL
+   public reference" that exists nowhere, a "public endpoint" that requires a token, a
+   "house convention" holding in 5 of ~101 files. Regenerating from those ships every
+   one of them. Fix the goals and scopes it names.
+3. **Its fixes will usually widen a scope, which makes more pages `restated`.** That is
+   expected, not a problem to route around. Default: act on findings for the pages you
+   are already regenerating, apply the rest to the catalog too, and let the next `stale`
+   pick them up — `restated` exists precisely so a corrected brief is not lost. If the
+   expanded set is more than you want to spend now, say so explicitly and list what you
+   deferred; never silently drop a finding.
+4. Act per bucket:
+   - `stale` → regenerate each page with `prompt <id> --update`, which renders what
+     changed into the prompt for you. Never hand-append that context: `stale` knows the
+     changed list and the script is what joins them. Run `bless <id>` on each page you
+     regenerate (hard rule 1).
    - `drifted` → **run `remap`, do not regenerate.** The cited lines moved but their
      content did not, so the fix is arithmetic: `remap` shifts each fragment and its
      human-readable text, blesses the page, and costs nothing. Regenerating these would
      spend a subagent to retype prose that was already correct.
    - `restated` → the page's *brief* changed, not its code: a goal was edited or a
-     scope was widened onto a file that already existed. Regenerate it under the page
-     contract, same as `stale`. This is where `plan-critic`'s findings land — acting on
-     them used to write into the catalog and never reach the page.
+     scope was widened onto a file that already existed. Regenerate with
+     `prompt <id> --update`, which names which of the two it was. This is where
+     `plan-critic`'s findings land — acting on them used to write into the catalog and
+     never reach the page.
    - `missing` → regenerate from the catalog entry.
    - `edited` → **do not touch** (hard rule 2). List them for the user. A page in both
      `stale` and `edited` is reported as "stale but human-edited — needs manual review".
    - `orphaned` → delete `wiki/<id>.md` and its catalog entry; report. Never delete a
      page that is also `edited`.
-   - `uncovered` → if the paths form a coherent new module, add planned catalog
-     entries (never remove or rewrite entries marked `frozen: true`), run `plan-check`
-     and read it before dispatching (a new entry is a new fan-out, and a scope bolted on
-     next to existing ones is exactly where an unreachable or duplicated scope appears),
-     then `plan-critic` — a goal written for a module nobody has read yet is exactly the
-     goal written from filenames — then generate them; otherwise mention and move on.
-3. `verify` → fix → `anchor`.
-4. Report per page: what changed, what was done — phrased so it can serve as the body
+   - `uncovered` → three outcomes, and the middle one is the commonest:
+     - the paths **belong inside an existing page's module** → widen that page's `scope`
+       to include them and mention it. The page becomes `restated` and regenerates on
+       that basis. This is what a new file in an already-documented module usually
+       needs, and it is what the first external run actually hit.
+     - the paths **form a coherent new module** → add planned catalog entries (never
+       remove or rewrite entries marked `frozen: true`), run `plan-check` and read it
+       before dispatching (a new entry is a new fan-out, and a scope bolted on next to
+       existing ones is exactly where an unreachable or duplicated scope appears), then
+       `plan-critic` — a goal written for a module nobody has read yet is exactly the
+       goal written from filenames — then generate them.
+     - neither → mention and move on.
+5. `verify` → fix → `anchor`.
+6. Report per page: what changed, what was done — phrased so it can serve as the body
    of the wiki commit message.
 
 ## Flow: audit (on demand only)

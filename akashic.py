@@ -1851,7 +1851,49 @@ def find_context_docs(root):
             if (root / name).is_file() and name not in tracked]
 
 
-def render_prompt(root, catalog, page_id):
+def regeneration_context(root, page_id):
+    """The "this page already existed" lines for a regeneration prompt.
+
+    SKILL.md's update flow has always required this sentence, and `prompt`
+    never emitted it -- so the orchestrator had to join `stale`'s JSON to the
+    rendered prompt and append the text by hand. On the first external run
+    that meant a throwaway script over ten pages, which is exactly the
+    hand-assembly the same file warns causes bugs three paragraphs earlier.
+    A rule that depends on being retyped is a rule that eventually is not.
+
+    It covers both reasons a page gets regenerated, because since `restated`
+    there are two: its sources moved, or its brief did. A prompt naming only
+    the first would send a subagent hunting for code changes that are not
+    there."""
+    report = compute_stale(root)
+    lines = []
+    for entry in report["stale"]:
+        if entry["id"] == page_id and entry.get("changed"):
+            lines.append(
+                "This page already existed. Its dependencies changed since "
+                "the last anchor: " + ", ".join(entry["changed"]) + ".")
+    for entry in report["restated"]:
+        if entry["id"] != page_id:
+            continue
+        if entry.get("goal_changed"):
+            lines.append(
+                "This page's goal was rewritten since it was last generated. "
+                "The goal above is the current one -- write to it, not to "
+                "what the existing page happens to say.")
+        if entry.get("new_in_scope"):
+            lines.append(
+                "These files newly fall inside this page's scope and are not "
+                "yet documented by it: "
+                + ", ".join(entry["new_in_scope"]) + ".")
+    if not lines:
+        return []
+    lines.append("Rewrite the page to match the current code. Do not append "
+                 "a changelog or an update summary -- pages are timeless and "
+                 "git carries the history.")
+    return lines
+
+
+def render_prompt(root, catalog, page_id, update=False):
     """Deterministically render the exact subagent prompt for one catalog
     page (SKILL.md's page contract). No LLM judgment in this function --
     it is plain string templating from catalog.json + the filesystem, so
@@ -1871,6 +1913,12 @@ def render_prompt(root, catalog, page_id):
     lines = [
         f"Write the wiki page **{page['title']}** for the repository at {root}.",
         f"Goal: {page['goal']}",
+    ]
+    if update:
+        context = regeneration_context(root, page_id)
+        if context:
+            lines += [""] + context + [""]
+    lines += [
         "Read these files -- this is also the ENTIRE set of files you may cite "
         "in Sources: lines (paths relative to repo root):",
     ]
@@ -1927,10 +1975,10 @@ def render_prompt(root, catalog, page_id):
     return "\n".join(lines)
 
 
-def cmd_prompt(root, page_id):
+def cmd_prompt(root, page_id, update=False):
     if not page_id:
         die("usage: akashic.py prompt <page-id>")
-    print(render_prompt(root, load_catalog(root), page_id))
+    print(render_prompt(root, load_catalog(root), page_id, update=update))
     return 0
 
 
@@ -2142,6 +2190,10 @@ def main(argv=None):
     prompt_parser = sub.add_parser(
         "prompt", help="render the exact subagent prompt for one catalog page id")
     prompt_parser.add_argument("page_id")
+    prompt_parser.add_argument(
+        "--update", action="store_true",
+        help="add the regeneration context (what changed, or how the brief "
+             "moved) for a page that already exists")
     sub.add_parser(
         "remap",
         help="shift drifted citations to their new line numbers (no LLM)")
@@ -2176,7 +2228,7 @@ def main(argv=None):
             return cmd_audit_extract(root, args.page)
         return cmd_audit_prompt(root, args.page_id)
     if args.command == "prompt":
-        return cmd_prompt(root, args.page_id)
+        return cmd_prompt(root, args.page_id, update=args.update)
     if args.command == "bless":
         return cmd_bless(root, args.page_ids, mark_done=args.done)
     if args.command == "stale":
