@@ -283,9 +283,19 @@ It emits JSON on stdout and a plain-language warning per finding on stderr:
   was visible only as a line inside a rendered prompt, read after dispatch.
 - **`subset`** — one page's scope entirely inside a sibling's. Both subagents read the
   same bulk, both write about it, and every change there stales two pages.
-- **`overlap`** — a pair sharing at least half the smaller page's files, reported in
-  files *and* lines. Below that, overlap is normal: an index page legitimately touches
-  what its children cover, and warning on it would get the check routed around.
+- **`overlap`** — every pair with a non-empty intersection, in files *and* lines, sorted
+  by duplicated lines. **There is no threshold, and the one it first shipped with was
+  wrong twice over.** Gating on shared files as a fraction of the smaller page's file
+  count measured the wrong quantity: on a real 28-page catalog it stayed silent on a pair
+  sharing 3632 lines (ratio 0.27) while reporting one sharing 2754 (ratio 0.69), because
+  one enormous shared file is *few files*. It was also non-monotonic — widening a page
+  from 5 files to 7 for unrelated reasons dropped a true finding about a *different* pair
+  whose intersection had not changed. Any ratio against page size carries that defect,
+  since the denominator moves for reasons the pair knows nothing about. Judging which
+  overlaps matter needs to know what the pages are *for*, so it belongs to `plan-critic`,
+  which already receives this report: the script measures, the model judges. `cmd_plan_check`
+  names the largest few on stderr and always states the true total, so a shortened display
+  never reads as the whole list.
 - **`oversized`** — over the ~200-file split rule the planning instructions already
   state. The threshold is read from that documented rule rather than invented here, so
   the two cannot drift apart.
