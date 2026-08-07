@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "aff43cbce87626c59696291af6fb8068f9c31432",
-  "generated": "2026-08-07T05:03:45Z",
+  "anchor": "54af9c9355ab7f9d2ef5e07311aae21a7aa4601b",
+  "generated": "2026-08-07T05:06:06Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,12 +30,12 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:6914dc3f99381e83895ebaad07af9de3e491d25430616a1158e61b33e5b4749e",
       "frozen": false,
       "blobs": {
         "CLAUDE.md": "b18054bdc2776a36d0d1ecbee50aeec42c064ac7",
         "CONTRIBUTING.md": "85e0da41202b7d09f049ef65cad8f729c2eaac36",
-        "DESIGN.md": "6e787503dc8dd48ea5daf52f8375d7228205c9a0",
+        "DESIGN.md": "50991967c5c1202ff7698bbf1bc4dc8552e46f69",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
         "README.md": "95e9b0db09c6133ecc19e9ea1cf51faedef35c0c",
         "SECURITY.md": "bfc548840a65633e8f1db49bb576b069bcf0d52f"
@@ -604,10 +604,10 @@
         "SKILL.md"
       ],
       "status": "done",
-      "hash": null,
+      "hash": "sha256:d51359e50f65a7b6eb73b37c9dc3610c1a79ddaa9f00af3eae864084c6080ed4",
       "frozen": false,
       "blobs": {
-        "SKILL.md": "ffe0e2b69244258198066f7374de5f89f96e0fe9"
+        "SKILL.md": "8618a109f9a851e4451baf6734b10ff4bb2c923f"
       },
       "ranges": {
         "SKILL.md": [
@@ -625,23 +625,23 @@
           ],
           [
             52,
-            111
+            122
           ],
           [
-            113,
-            141
+            124,
+            152
           ],
           [
-            143,
-            169
+            154,
+            180
           ],
           [
-            171,
-            173
+            182,
+            184
           ],
           [
-            175,
-            182
+            186,
+            193
           ]
         ]
       }
