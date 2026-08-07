@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "8d969a4a9f78e808f0e1f8a74cc6da56ec5030c7",
-  "generated": "2026-08-07T04:10:43Z",
+  "anchor": "0b63b216ddf8e7ab56b8643afb6624e587df5929",
+  "generated": "2026-08-07T04:17:24Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,8 +30,16 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": null,
-      "frozen": false
+      "hash": "sha256:6c4c24c589866eb47c61b6ce0ecb13a8fd6378737cd6fe32813ac4bd9d2b78d1",
+      "frozen": false,
+      "blobs": {
+        "CLAUDE.md": "1cac932c9a47b08af9f79206ebdfa3928263af7d",
+        "CONTRIBUTING.md": "85e0da41202b7d09f049ef65cad8f729c2eaac36",
+        "DESIGN.md": "f228e978e4be6febf5f2700a36d18cdeee1942ae",
+        "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
+        "README.md": "a2e76ba384c09f03c7df168acc97176a54fd58ce",
+        "SECURITY.md": "bfc548840a65633e8f1db49bb576b069bcf0d52f"
+      }
     },
     {
       "id": "deterministic-core",
@@ -47,8 +55,12 @@
         "test_akashic.py"
       ],
       "status": "done",
-      "hash": null,
-      "frozen": false
+      "hash": "sha256:61a0128f3761cc784359e5ece8cd545768c221907f5987b4142047a1b97c6cb4",
+      "frozen": false,
+      "blobs": {
+        "akashic.py": "727acba102282bfd30100d35f158d8ab726529be",
+        "test_akashic.py": "5fe448ab394b8e24a64da40f92d3b389e91805cd"
+      }
     },
     {
       "id": "skill-orchestration",
@@ -63,7 +75,10 @@
       ],
       "status": "done",
       "hash": "sha256:ada599437f4ea24ab35087ccd6d7c3d06a6fe94d09ff324bf73c26057b0b6ed9",
-      "frozen": false
+      "frozen": false,
+      "blobs": {
+        "SKILL.md": "ae1cd83753fb0718ccc0d2c1708fdf72b4fc8b3d"
+      }
     }
   ]
 }
