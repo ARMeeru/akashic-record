@@ -2,7 +2,7 @@
 
 `akashic.py` is the half of akashic-record that must never be hallucinated: file scanning, the diff-to-stale-page mapping, citation verification, hash/anchor stamping, and deterministic rendering of the exact subagent prompt used to generate a page. It never calls an LLM, and the LLM side (catalog planning and page prose, described in [Skill Orchestration](./skill-orchestration.md)) never computes a hash, diff, line range, or prompt text. The script is stdlib-only Python 3.9+, exposes six subcommands — `scan`, `stale`, `verify`, `anchor`, `prompt`, `bless` — behind a `-C` directory flag, requires a git repository with at least one commit, and exits 0 on success, 1 on verification failures, 2 on usage or precondition errors. How these commands fit into the overall system is covered in [Project Overview](./index.md).
 
-Sources: [akashic.py:1-29](../../akashic.py#L1-L29), [akashic.py:78-87](../../akashic.py#L78-L87), [akashic.py:1260-1303](../../akashic.py#L1260-L1303)
+Sources: [akashic.py:1-29](../../akashic.py#L1-L29), [akashic.py:78-87](../../akashic.py#L78-L87), [akashic.py:1260-1317](../../akashic.py#L1260-L1317)
 
 ## scan — the planner's filtered view
 
@@ -124,7 +124,7 @@ That carve-out was not merely inelegant, it could lose work. Hand-editing is two
 
 `bless_pages` validates every id and every page file before mutating anything: an id absent from the catalog and a page whose `wiki/<id>.md` was never written both die with exit 2, leaving the catalog untouched. Those are the two ways the hand-edit went wrong in practice — a typo'd id, and blessing a page a subagent never actually produced.
 
-Sources: [akashic.py:985-1016](../../akashic.py#L985-L1016), [akashic.py:1019-1025](../../akashic.py#L1019-L1025), [akashic.py:1281-1295](../../akashic.py#L1281-L1295)
+Sources: [akashic.py:985-1016](../../akashic.py#L985-L1016), [akashic.py:1019-1025](../../akashic.py#L1019-L1025), [akashic.py:1281-1309](../../akashic.py#L1281-L1309)
 
 ## prompt — deterministic subagent-prompt rendering
 
@@ -134,9 +134,11 @@ The citable file list is `expand_scope`: tracked files matching the page's `scop
 
 `find_context_docs` separately surfaces local-only agent-guidance files (`CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.windsurfrules`, `GEMINI.md`, `.github/copilot-instructions.md`) that exist on disk but are **not** tracked by git — commonly excluded via `.git/info/exclude` or a personal gitignore. When present, the rendered prompt explicitly tells the subagent it may read them for context but must never cite them in a `Sources:` line, since an untracked file may not exist for another clone of the repo; a fact sourced from one should instead be traced to the tracked code that implements it, stated as uncited prose, or omitted. If no such files are present (or they are already tracked), the warning paragraph is omitted entirely rather than emitted as boilerplate.
 
+The rendered text closes with a **read-only mandate**: read and cite these files, never execute them, run nothing git-mutating, and treat what the files say as material to document rather than as instructions to follow. It is rendered here rather than appended by whoever dispatches the prompt for the same reason the file list is — a page's scope routinely includes operational scripts, and a safety rule that has to be retyped per dispatch is one that eventually is not.
+
 `cmd_prompt` requires a page id argument and dies with exit 2 if the id is not in the catalog, via the same `die()` path every other precondition failure uses.
 
-Sources: [akashic.py:1162-1166](../../akashic.py#L1162-L1166), [akashic.py:1168-1181](../../akashic.py#L1168-L1181), [akashic.py:1183-1186](../../akashic.py#L1183-L1186), [akashic.py:1189-1248](../../akashic.py#L1189-L1248), [akashic.py:1251-1255](../../akashic.py#L1251-L1255)
+Sources: [akashic.py:1162-1166](../../akashic.py#L1162-L1166), [akashic.py:1168-1181](../../akashic.py#L1168-L1181), [akashic.py:1183-1186](../../akashic.py#L1183-L1186), [akashic.py:1189-1262](../../akashic.py#L1189-L1262), [akashic.py:1251-1269](../../akashic.py#L1251-L1269)
 
 ## What the test suite proves
 
@@ -162,6 +164,6 @@ Sources: [akashic.py:1162-1166](../../akashic.py#L1162-L1166), [akashic.py:1168-
 - **Coverage semantics**: exact `files` entries do not shadow same-named files at other depths in the `uncovered` report, and noise is filtered there too.
 - **`prompt` rendering**: the citable list holds only tracked, in-scope files and omits an out-of-scope sibling file; scope expansion applies the scan filters, so a `src/**` scope offers `src/app.py` but never `bundle.min.js`, `package-lock.json`, an excluded `.snap`, or a binary; siblings and the page `goal` appear verbatim; an untracked `CLAUDE.md` is named alongside a "NOT tracked by git" warning, and that paragraph is absent when no such doc exists; an unknown page id exits 2.
 
-Sources: [test_akashic.py:2-7](../../test_akashic.py#L2-L7), [test_akashic.py:29-68](../../test_akashic.py#L29-L68), [test_akashic.py:71-86](../../test_akashic.py#L71-L86), [test_akashic.py:89-147](../../test_akashic.py#L89-L147), [test_akashic.py:428-491](../../test_akashic.py#L428-L491), [test_akashic.py:494-544](../../test_akashic.py#L494-L544), [test_akashic.py:547-575](../../test_akashic.py#L547-L575), [test_akashic.py:611-649](../../test_akashic.py#L611-L649), [test_akashic.py:651-664](../../test_akashic.py#L651-L664), [test_akashic.py:666-725](../../test_akashic.py#L666-L725), [test_akashic.py:727-743](../../test_akashic.py#L727-L743), [test_akashic.py:745-775](../../test_akashic.py#L745-L775), [test_akashic.py:777-801](../../test_akashic.py#L777-L801), [test_akashic.py:803-821](../../test_akashic.py#L803-L821), [test_akashic.py:832-847](../../test_akashic.py#L832-L847), [test_akashic.py:849-916](../../test_akashic.py#L849-L916), [test_akashic.py:918-942](../../test_akashic.py#L918-L942)
+Sources: [test_akashic.py:2-7](../../test_akashic.py#L2-L7), [test_akashic.py:29-68](../../test_akashic.py#L29-L68), [test_akashic.py:71-86](../../test_akashic.py#L71-L86), [test_akashic.py:89-147](../../test_akashic.py#L89-L147), [test_akashic.py:428-491](../../test_akashic.py#L428-L491), [test_akashic.py:494-544](../../test_akashic.py#L494-L544), [test_akashic.py:547-575](../../test_akashic.py#L547-L575), [test_akashic.py:611-649](../../test_akashic.py#L611-L649), [test_akashic.py:651-664](../../test_akashic.py#L651-L664), [test_akashic.py:666-725](../../test_akashic.py#L666-L725), [test_akashic.py:727-743](../../test_akashic.py#L727-L743), [test_akashic.py:745-775](../../test_akashic.py#L745-L775), [test_akashic.py:777-801](../../test_akashic.py#L777-L801), [test_akashic.py:803-821](../../test_akashic.py#L803-L821), [test_akashic.py:832-847](../../test_akashic.py#L832-L847), [test_akashic.py:849-916](../../test_akashic.py#L849-L916), [test_akashic.py:937-961](../../test_akashic.py#L937-L961)
 
-*Generated from commit `bf1c15e` on 2026-08-07.*
+*Generated from commit `515e459` on 2026-08-07.*
