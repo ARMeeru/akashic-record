@@ -128,7 +128,7 @@ python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating; --
 
 Exit codes: 0 ok, 1 verification failure, 2 usage or precondition error. There is no build step, no dependencies, and no lint config; the suite runs with `python3 test_akashic.py`, and single classes or tests can be named directly. Fixtures are throwaway git repos built in `tempfile`, one smallest-possible check per deterministic component; the LLM phases have no unit tests, because the runtime `verify` gate is their coverage.
 
-Sources: [README.md:53-87](../../README.md#L53-L87), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [README.md:88-93](../../README.md#L88-L93), [CLAUDE.md:71-73](../../CLAUDE.md#L71-L73), [DESIGN.md:810-822](../../DESIGN.md#L810-L822)
+Sources: [README.md:53-87](../../README.md#L53-L87), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [README.md:88-93](../../README.md#L88-L93), [CLAUDE.md:71-73](../../CLAUDE.md#L71-L73), [DESIGN.md:823-835](../../DESIGN.md#L823-L835)
 
 ## Contributing and dogfooding
 
@@ -136,7 +136,7 @@ The default branch is `develop`; branch from it and target PRs at it, with commi
 
 This repo carries its own generated wiki in `.akashic/` and follows the skill's own rules: never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, or `generated` fields, running `bless <id>` after regenerating a page instead, never edit the derived `wiki/README.md`, and after source changes refresh through the update flow — `stale`, regenerate, `verify`, `anchor` — committed as `chore: refresh self-dogfooded wiki`.
 
-Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:777-797](../../DESIGN.md#L777-L797), [README.md:110-126](../../README.md#L110-L126), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:75-77](../../CLAUDE.md#L75-L77)
+Sources: [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:18-31](../../CONTRIBUTING.md#L18-L31), [CONTRIBUTING.md:33-35](../../CONTRIBUTING.md#L33-L35), [DESIGN.md:790-810](../../DESIGN.md#L790-L810), [README.md:110-126](../../README.md#L110-L126), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:75-77](../../CLAUDE.md#L75-L77)
 
 ## Security and license
 
@@ -154,6 +154,6 @@ A reading order for the first hour:
 4. `DESIGN.md` in the repo root, when you need the normative answer to a format or behavior question — especially §2 (division of labor), §3.3 (the citation grammar), and §8 (what is deliberately not built). Its build order also doubles as a dependency order for reading the source: `akashic.py`, then `test_akashic.py`, then `SKILL.md`, then `README.md`.
 5. `CONTRIBUTING.md` before your first PR, for the invariants and the branch and commit conventions.
 
-Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:826-833](../../DESIGN.md#L826-L833), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
+Sources: [README.md:22-30](../../README.md#L22-L30), [CLAUDE.md:12-14](../../CLAUDE.md#L12-L14), [DESIGN.md:839-846](../../DESIGN.md#L839-L846), [CONTRIBUTING.md:1-3](../../CONTRIBUTING.md#L1-L3)
 
-*Generated from commit `bd56becf` on 2026-08-07.*
+*Generated from commit `4234c2da` on 2026-08-07.*
