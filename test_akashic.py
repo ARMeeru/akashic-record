@@ -786,6 +786,31 @@ class TestReviewRegressions(RepoCase):
         self.assertEqual(errors, [])
         self.assertNotIn("anchored to", stderr)
 
+    def test_a_narrowed_citation_is_not_a_dropped_claim(self):
+        """The whole of this check's first live outing: 13 warnings, every one
+        a rewrite that tightened a range. Requiring full containment assumed a
+        correct rewrite cites at least as much as the last one did, and a good
+        rewrite routinely cites less."""
+        root = self.anchored_range_repo(
+            "[src/app.py:6-7](../../src/app.py#L6-L7)",  # was 1-3, now 5-7
+            prelude="# a\n# b\n# c\n# d\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("anchored to", stderr,
+                         "citing part of the anchored content is not losing it")
+
+    def test_a_citation_split_around_real_content_is_not_a_dropped_claim(self):
+        """`merge_spans` deliberately will not bridge a gap holding real code,
+        so a page citing two halves of a region has two intervals. Under
+        containment that read as uncovered."""
+        root = self.anchored_range_repo(
+            "[src/app.py:5-5](../../src/app.py#L5-L5), "
+            "[src/app.py:7-7](../../src/app.py#L7-L7)",
+            prelude="# a\n# b\n# c\n# d\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("anchored to", stderr)
+
     def test_repeated_boundary_lines_produce_no_guess(self):
         """A wrong relocation would produce exactly the confidently-wrong line
         numbers this check exists to catch, so ambiguity yields no answer."""
