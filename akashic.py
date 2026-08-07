@@ -452,6 +452,128 @@ def check_identifiers(root, page_id, rel, body, resolved_citations):
     return warnings
 
 
+def file_at_rev(root, rev, path, cache):
+    """A file's lines at a revision, or None if it wasn't there."""
+    key = (rev, path)
+    if key not in cache:
+        result = git(root, "show", f"{rev}:{path}", check=False)
+        cache[key] = result.stdout.split("\n") if result.returncode == 0 else None
+    return cache[key]
+
+
+def span_edges(lines, start, end):
+    """The first and last non-blank stripped lines inside [start, end].
+
+    Edges rather than the whole span on purpose: a span whose interior was
+    edited has still moved as a unit, and that is the question here. Whether
+    its contents changed is `stale`'s question, answered elsewhere."""
+    live = [line.strip() for line in lines[start - 1:end] if line.strip()]
+    return (live[0], live[-1]) if live else None
+
+
+def locate_edges(lines, edges, length):
+    """Where a recorded boundary pair sits now: (start, end), or None.
+
+    Matching the pair rather than each line alone is what makes this usable:
+    boundary lines are routinely repeated (`}`, `)`, a bare `return`), and
+    checking them one at a time left a fifth of this repo's own spans
+    unresolvable. As a pair with the original length preferred, essentially
+    all of them resolve. Uniqueness is required in both passes -- ambiguity
+    yields no answer rather than a guess, because a wrong relocation would
+    produce exactly the confidently-wrong line numbers this check exists to
+    catch."""
+    first, last = edges
+    starts = [i + 1 for i, line in enumerate(lines) if line.strip() == first]
+    ends = [i + 1 for i, line in enumerate(lines) if line.strip() == last]
+    exact = [(s, e) for s in starts for e in ends if e - s == length]
+    if len(exact) == 1:
+        return exact[0]
+    ordered = [(s, e) for s in starts for e in ends if s <= e]
+    return ordered[0] if len(ordered) == 1 else None
+
+
+def merge_spans(spans, lines=None):
+    """Overlapping and adjacent spans collapsed into disjoint ones, sorted.
+
+    With `lines`, two spans separated only by blank lines also merge. A page
+    that splits one region across two citations leaves a one- or two-line
+    whitespace gap between them, and treating that as a hole would report a
+    correct page as having lost content -- the precise kind of false warning
+    that gets a whole class filtered out unread."""
+    merged = []
+    for start, end in sorted(spans):
+        gap_is_blank = (
+            merged and lines is not None and start > merged[-1][1]
+            and not any(line.strip()
+                        for line in lines[merged[-1][1]:start - 1]))
+        if merged and (start <= merged[-1][1] + 1 or gap_is_blank):
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return [(s, e) for s, e in merged]
+
+
+def check_anchored_content(root, anchor, page, rel, current, cache):
+    """Warn when code a page was anchored to is covered by none of its citations.
+
+    `verify` proves a citation lands inside its file. It cannot prove the lines
+    hold what the prose above them describes, so a citation rewritten to the
+    wrong numbers passes every gate. That is not hypothetical: three separate
+    mechanical fixes to this repo's own wiki produced ranges landing on a stray
+    bracket, on blank lines, and mid-regex, and all three verified clean.
+
+    Nothing new has to be recorded to close it. `ranges` are already stored in
+    anchor coordinates and the anchor commit is already stored, so the tool can
+    read what a span actually held and find that content in the working tree.
+    If no current citation covers where it landed, the page has stopped
+    pointing at the code it was anchored to.
+
+    Warning-level, like check_identifiers. Re-scoping a page drops citations on
+    purpose, and a check that blocked `anchor` for that would be wrong more
+    often than right."""
+    warnings = []
+    for path, spans in sorted((page.get("ranges") or {}).items()):
+        old = file_at_rev(root, anchor, path, cache)
+        if old is None:
+            continue
+        try:
+            new = (root / path).read_text(
+                encoding="utf-8", errors="surrogateescape").split("\n")
+        except OSError:
+            continue
+        # Coverage is the union of this page's citations for the file, not any
+        # single one: a region legitimately gets split across two adjacent
+        # citations when a page grows, and calling that uncovered would be a
+        # false warning on a correct page.
+        covered = merge_spans(current.get(path, []), new)
+        uncovered = []
+        for start, end in sorted({tuple(s) for s in spans}):
+            edges = span_edges(old, start, end)
+            if not edges:
+                continue
+            found = locate_edges(new, edges, end - start)
+            if not found:
+                continue  # repeated boundary lines: no answer beats a guess
+            lo, hi = found
+            if any(s <= lo and hi <= e for s, e in covered):
+                continue
+            uncovered.append((start, end, lo, hi))
+        if not uncovered:
+            continue
+        # One line per file, not per span. A file that moved moves every span
+        # in it, and twenty near-identical warnings for one edit is how a
+        # warning class gets filtered out unread.
+        start, end, lo, hi = uncovered[0]
+        moved = "" if (lo, hi) == (start, end) else f", anchored at {start}-{end}"
+        more = "" if len(uncovered) == 1 else f" (and {len(uncovered) - 1} more)"
+        warnings.append(
+            f"{page['id']}: {rel}: code this page anchored to in {path} is "
+            f"now at lines {lo}-{hi}{moved}{more}, covered by no citation on "
+            "this page -- check the line numbers, or drop the claim if the "
+            "page no longer documents it")
+    return warnings
+
+
 def verify_repo(root):
     """The deterministic QA gate. Returns a list of error strings (empty = pass)."""
     catalog = load_catalog(root)
@@ -488,6 +610,14 @@ def verify_repo(root):
     # would be permanently fresh), and on case-insensitive filesystems is_file()
     # accepts a wrong-case path that the diff intersection would never match.
     tracked = set(tracked_files(root))
+    # The anchored-content check needs the anchor commit to be readable. When
+    # it isn't, every page is reported stale anyway, so staying silent here
+    # costs nothing and keeps a shallow clone from emitting a warning per span.
+    anchor = catalog.get("anchor")
+    if anchor and git(root, "cat-file", "-e", anchor,
+                      check=False).returncode != 0:
+        anchor = None
+    rev_cache = {}
     for page in pages:
         if page.get("status") != "done":
             continue
@@ -512,6 +642,7 @@ def verify_repo(root):
                           "parseable citation links")
 
         resolved_citations = []
+        current_spans = {}
         for lineno, raw in citations:
             path, fragment, err = resolve_citation(root, page_file, raw)
             if err:
@@ -536,6 +667,10 @@ def verify_repo(root):
             err = check_fragment(fragment, cited.read_bytes())
             if err:
                 errors.append(f"{pid}: {rel} line {lineno}: {path}: {err}")
+            elif fragment:
+                span = citation_span(root, path, fragment)
+                if span:
+                    current_spans.setdefault(path, []).append(span)
             # "Read these files -- this is the ENTIRE set you may cite" (the
             # rendered prompt) is a promise nothing mechanically enforced
             # until now. A citation outside the page's own scope isn't
@@ -553,6 +688,11 @@ def verify_repo(root):
         for message in check_identifiers(root, pid, rel, body,
                                          resolved_citations):
             warn(message)
+
+        if anchor:
+            for message in check_anchored_content(root, anchor, page, rel,
+                                                  current_spans, rev_cache):
+                warn(message)
 
         for lineno, raw in wiki_links:
             path, _, err = resolve_citation(root, page_file, raw)
