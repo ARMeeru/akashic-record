@@ -44,6 +44,7 @@ python3 "<this skill's base directory>/akashic.py" -C <target-repo> <command>
 | `anchor` | record deps + hashes, stamp anchor commit, render TOC | summary |
 | `prompt <id>` | render the exact subagent prompt for one catalog page | text — dispatch it verbatim |
 | `remap` | shift citations whose lines moved without changing; no LLM | summary |
+| `plan-check` | shape checks on the catalog before a fan-out | JSON + warnings; always exit 0 |
 | `bless <id>...` | mark pages as tool-written after regenerating them (`hash` → null); `--done` also flips `status` | summary |
 
 Exit codes: 0 ok, 1 verification failure, 2 precondition/usage error (e.g. no git repo,
@@ -101,7 +102,15 @@ no commits, too many files — relay these to the user verbatim; they are action
    overlap (`src/lib/services/users/*` also matches `notification_settings/`), the pages'
    distinct `goal` fields are what separate them, not the scopes. Full normative text:
    DESIGN.md §3.2.
-4. Generate every `planned` page with parallel subagents (all in one message), one per
+4. Run `plan-check` and read it **before dispatching anything**. It is free and it looks
+   at the real fan-out input: a scope matching no tracked file, a scope entirely inside a
+   sibling's, a heavy pairwise overlap, a page over the ~200-file split rule, an empty
+   goal, a duplicate title, and the expanded line total per page. Fix the catalog and
+   re-run rather than dispatching a subagent that has nothing to cite or two that will
+   read the same bulk and write the same prose. It is advisory and never blocks — some
+   overlap is legitimate — so the judgment is yours; what is not acceptable is not
+   looking. Its output is also what a plan-approval checkpoint should show a human.
+5. Generate every `planned` page with parallel subagents (all in one message), one per
    page. **Get each subagent's prompt by running `prompt <id>` — do not hand-write
    it.** The page contract below documents what that output looks like and why, but
    the script is the one that fills it in (scope-expanded file list, sibling
@@ -111,14 +120,14 @@ no commits, too many files — relay these to the user verbatim; they are action
    rendered by the script, precisely so they cannot be forgotten. Run `bless <id> --done` as each page's file
    lands — that flips `status` and nulls the hash in one atomic write.
    Interrupted? Just re-run: generate pages still `planned`.
-5. Run `stale` and check the `planned` bucket is empty before going further. A page
+6. Run `stale` and check the `planned` bucket is empty before going further. A page
    still listed there is one a subagent never wrote: `verify` and `anchor` both skip
    non-done pages, so nothing else in the pipeline will notice. Regenerate it or say
    so explicitly; never anchor a run you have not confirmed finished.
-6. Run `verify`. Fix every error (repair citations or regenerate the page) and re-run
+7. Run `verify`. Fix every error (repair citations or regenerate the page) and re-run
    until exit 0.
-7. Run `anchor`.
-7. Offer to (a) add `Repo wiki: .akashic/wiki/README.md (architecture + module docs with source citations)`
+8. Run `anchor`.
+9. Offer to (a) add `Repo wiki: .akashic/wiki/README.md (architecture + module docs with source citations)`
    to the repo's CLAUDE.md, and (b) commit `.akashic/` (`docs: generate repo wiki`).
 
 ## Page contract (what `prompt <id>` renders — reference only, do not hand-type)
@@ -173,15 +182,17 @@ no commits, too many files — relay these to the user verbatim; they are action
    - `orphaned` → delete `wiki/<id>.md` and its catalog entry; report. Never delete a
      page that is also `edited`.
    - `uncovered` → if the paths form a coherent new module, add planned catalog
-     entries (never remove or rewrite entries marked `frozen: true`) and generate them;
-     otherwise mention and move on.
+     entries (never remove or rewrite entries marked `frozen: true`), run `plan-check`
+     and read it before dispatching (a new entry is a new fan-out, and a scope bolted on
+     next to existing ones is exactly where an unreachable or duplicated scope appears),
+     then generate them; otherwise mention and move on.
 3. `verify` → fix → `anchor`.
 4. Report per page: what changed, what was done — phrased so it can serve as the body
    of the wiki commit message.
 
 ## Flow: status
 
-Run `stale`, summarize buckets in plain language, change nothing.
+Run `stale`, summarize buckets in plain language, change nothing. Add `plan-check` when the question is about the plan rather than freshness — it reads nothing but the catalog and the file tree, and changes nothing either.
 
 ## Consumption (reading the wiki)
 

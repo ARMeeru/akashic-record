@@ -1095,6 +1095,110 @@ class TestReviewRegressions(RepoCase):
                         f"a link to a nonexistent catalog id must still fail, got: {errors}")
 
 
+class TestPlanCheck(RepoCase):
+    """Shape checks on a catalog before any subagent is dispatched. Every page
+    here is `planned`, because pre-flight is the whole point."""
+
+    def plan_repo(self, pages, tree=None):
+        repo = self.make_repo()
+        for rel, body in (tree or {"src/a.py": "one\ntwo\n",
+                                   "src/b.py": "three\n"}).items():
+            self.write(repo, rel, body)
+        self.commit(repo)
+        self.catalog(repo, pages)
+        return akashic.plan_check(akashic.repo_root(repo))
+
+    def test_scope_matching_nothing_is_surfaced_before_the_fan_out(self):
+        """Today this is visible only inside a rendered prompt, which nobody
+        reads until a subagent has been dispatched with nothing to cite."""
+        report = self.plan_repo([
+            self.page("ghost", scope=["docs/*"], status="planned"),
+            self.page("real", scope=["src/*"], status="planned")])
+        self.assertEqual(report["empty_scope"], ["ghost"])
+        self.assertEqual(report["no_scope"], [])
+
+    def test_a_page_with_no_scope_at_all_is_a_separate_finding(self):
+        report = self.plan_repo([self.page("bare", status="planned")])
+        self.assertEqual(report["no_scope"], ["bare"])
+        self.assertEqual(report["empty_scope"], [],
+                         "no scope and an unmatched scope are different bugs")
+
+    def test_a_scope_inside_a_siblings_is_reported_as_a_subset(self):
+        """The defect this was built for: two pages scoped to the same bulk
+        means both subagents read it, both write about it, and every change
+        there marks two pages stale instead of one."""
+        report = self.plan_repo([
+            self.page("narrow", scope=["src/a.py"], status="planned"),
+            self.page("wide", scope=["src/*"], status="planned")])
+        self.assertEqual(report["subset"],
+                         [{"page": "narrow", "of": "wide", "files": 1}])
+        self.assertEqual(report["overlap"], [],
+                         "a pair is reported once, under the sharper heading")
+
+    def test_partial_overlap_is_reported_with_files_and_lines(self):
+        tree = {"src/a.py": "1\n2\n", "src/b.py": "3\n",
+                "src/c.py": "4\n", "src/d.py": "5\n"}
+        report = self.plan_repo([
+            self.page("one", scope=["src/a.py", "src/b.py", "src/c.py"],
+                      status="planned"),
+            self.page("two", scope=["src/a.py", "src/b.py", "src/d.py"],
+                      status="planned")], tree=tree)
+        self.assertEqual(len(report["overlap"]), 1)
+        found = report["overlap"][0]
+        self.assertEqual(found["pages"], ["one", "two"])
+        self.assertEqual(found["files"], 2)
+        self.assertEqual(found["lines"], 3, "2 lines in a.py plus 1 in b.py")
+
+    def test_incidental_overlap_stays_quiet(self):
+        """Below the threshold, sharing a file is normal -- an index page
+        legitimately touches what its children cover. Warning on it would get
+        the whole check routed around."""
+        tree = {f"src/f{i}.py": "x\n" for i in range(6)}
+        report = self.plan_repo([
+            self.page("one", scope=[f"src/f{i}.py" for i in range(4)],
+                      status="planned"),
+            self.page("two", scope=["src/f3.py", "src/f4.py", "src/f5.py"],
+                      status="planned")], tree=tree)
+        self.assertEqual(report["overlap"], [])
+
+    def test_oversized_scope_cites_the_documented_split_rule(self):
+        tree = {f"src/f{i}.py": "x\n"
+                for i in range(akashic.SPLIT_THRESHOLD + 1)}
+        report = self.plan_repo(
+            [self.page("huge", scope=["src/*"], status="planned")], tree=tree)
+        self.assertEqual(report["oversized"],
+                         [{"id": "huge", "files": akashic.SPLIT_THRESHOLD + 1}])
+
+    def test_empty_goals_and_duplicate_titles(self):
+        report = self.plan_repo([
+            self.page("a", scope=["src/a.py"], status="planned", goal="  ",
+                      title="Same"),
+            self.page("b", scope=["src/b.py"], status="planned",
+                      title="same")])
+        self.assertEqual(report["empty_goal"], ["a"])
+        self.assertEqual(report["duplicate_titles"],
+                         [{"title": "same", "ids": ["a", "b"]}])
+
+    def test_line_totals_are_reported_biggest_first(self):
+        """Data, not a finding: a 10k-line outlier should be visible before
+        dispatch rather than discovered in the bill."""
+        report = self.plan_repo([
+            self.page("small", scope=["src/b.py"], status="planned"),
+            self.page("big", scope=["src/a.py"], status="planned")])
+        self.assertEqual([p["id"] for p in report["pages"]], ["big", "small"])
+        self.assertEqual(report["pages"][0]["lines"], 2)
+
+    def test_scope_expansion_matches_what_a_subagent_would_be_given(self):
+        """One definition of the citable universe. If plan-check counted files
+        the prompt would not offer, it would be measuring a different plan."""
+        tree = {"src/a.py": "1\n", "src/bundle.min.js": "x\n",
+                "package-lock.json": "{}\n"}
+        report = self.plan_repo(
+            [self.page("p", scope=["src/*", "package-lock.json"],
+                       status="planned")], tree=tree)
+        self.assertEqual(report["pages"][0]["files"], 1)
+
+
 class TestLoop(RepoCase):
     """The runner's decision layer. The LLM invocation itself is not covered:
     it shells out to `claude -p`, and a test that stubbed it would only assert

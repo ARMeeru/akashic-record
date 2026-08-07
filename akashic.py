@@ -1411,6 +1411,141 @@ def cmd_remap(root):
     return 0
 
 
+# ------------------------------------------------------------------ plan-check
+
+# SKILL.md's planning rules already say a scope matching more than ~200 files
+# means the page should be split. Reading the number from the documented rule
+# rather than inventing one keeps the two from drifting apart.
+SPLIT_THRESHOLD = 200
+# Half the smaller page's files shared is the point where two subagents are
+# reading the same bulk and will write some of the same prose. Below that,
+# overlap is normal -- an index page legitimately touches what others cover.
+OVERLAP_RATIO = 0.5
+
+
+def scope_sizes(root, catalog, paths=None):
+    """Per page: its scope-expanded file set and total line count.
+
+    Uses `expand_scope`, so this sees exactly the files a subagent would be
+    told it may cite -- the point of the check is to look at the real fan-out
+    input, not at the globs someone typed."""
+    excludes = catalog.get("exclude", [])
+    candidates = set(tracked_files(root)) if paths is None else paths
+    lines_cache, out = {}, {}
+    for page in catalog["pages"]:
+        files = expand_scope(root, page.get("scope", []), excludes, candidates)
+        for rel in files:
+            if rel not in lines_cache:
+                try:
+                    lines_cache[rel] = line_count((root / rel).read_bytes())
+                except OSError:
+                    lines_cache[rel] = 0
+        out[page["id"]] = (set(files), sum(lines_cache[r] for r in files))
+    return out, lines_cache
+
+
+def plan_check(root):
+    """LLM-free checks on the *shape* of a catalog, runnable before any fan-out.
+
+    `verify` gates what subagents produced. Nothing gated the plan that was
+    handed to them, so a scope matching no files, or two pages scoped to the
+    same bulk, was discovered after the tokens were spent -- in one 26-page run
+    against a real repo, two pages both scoped to all 86 migrations cost about
+    180k tokens of duplicated reading and made every schema change stale two
+    pages instead of one.
+
+    Deliberately narrow. These are shape questions a script can answer for
+    free. Whether a page's `goal` is *true* and reachable from its scope needs
+    reading the code and judging meaning, which is the plan critic's job, not
+    this one's -- of the seven planning defects that motivated both, these
+    checks catch one. Cheap and useful is the whole claim."""
+    catalog = load_catalog(root)
+    sized, lines_of = scope_sizes(root, catalog)
+    pages = [{"id": p["id"], "files": len(sized[p["id"]][0]),
+              "lines": sized[p["id"]][1]}
+             for p in catalog["pages"]]
+
+    report = {"pages": sorted(pages, key=lambda p: -p["lines"]),
+              "no_scope": [], "empty_scope": [], "empty_goal": [],
+              "duplicate_titles": [], "oversized": [], "subset": [],
+              "overlap": []}
+
+    by_title = {}
+    for page in catalog["pages"]:
+        pid = page["id"]
+        files = sized[pid][0]
+        if not page.get("scope"):
+            report["no_scope"].append(pid)
+        elif not files:
+            # Today this is visible only as a line inside a rendered prompt,
+            # which nobody reads until a subagent has already been dispatched
+            # with nothing to cite.
+            report["empty_scope"].append(pid)
+        if not (page.get("goal") or "").strip():
+            report["empty_goal"].append(pid)
+        if len(files) > SPLIT_THRESHOLD:
+            report["oversized"].append({"id": pid, "files": len(files)})
+        by_title.setdefault((page.get("title") or "").strip().lower(),
+                            []).append(pid)
+    for title, ids in sorted(by_title.items()):
+        if title and len(ids) > 1:
+            report["duplicate_titles"].append({"title": title, "ids": ids})
+
+    ids = [p["id"] for p in catalog["pages"]]
+    for i, a in enumerate(ids):
+        for b in ids[i + 1:]:
+            fa, fb = sized[a][0], sized[b][0]
+            shared = fa & fb
+            if not shared:
+                continue
+            # Subset is the sharper finding and implies overlap, so a pair is
+            # reported once, under the more specific heading.
+            if fa <= fb or fb <= fa:
+                inner, outer = (a, b) if fa <= fb else (b, a)
+                report["subset"].append(
+                    {"page": inner, "of": outer, "files": len(shared)})
+                continue
+            if len(shared) / min(len(fa), len(fb)) >= OVERLAP_RATIO:
+                report["overlap"].append(
+                    {"pages": sorted([a, b]), "files": len(shared),
+                     "lines": sum(lines_of[r] for r in shared)})
+    return report
+
+
+PLAN_FINDINGS = ("no_scope", "empty_scope", "empty_goal", "duplicate_titles",
+                 "oversized", "subset", "overlap")
+
+
+def cmd_plan_check(root):
+    report = plan_check(root)
+    print(json.dumps(report, indent=2))
+    # Advisory, never a gate: several findings are legitimate on a real
+    # catalog (an index page overlapping its children, a deliberately broad
+    # page), and a pre-flight check that blocked would get routed around.
+    for item in report["no_scope"]:
+        warn(f"plan-check: \"{item}\" has no scope; it can cite nothing")
+    for item in report["empty_scope"]:
+        warn(f"plan-check: \"{item}\" has a scope matching no tracked file; "
+             "fix the globs before dispatching a subagent to it")
+    for item in report["empty_goal"]:
+        warn(f"plan-check: \"{item}\" has an empty goal")
+    for item in report["duplicate_titles"]:
+        warn(f"plan-check: {len(item['ids'])} pages share the title "
+             f"\"{item['title']}\": {', '.join(item['ids'])}")
+    for item in report["oversized"]:
+        warn(f"plan-check: \"{item['id']}\" scope matches {item['files']} "
+             f"files (over {SPLIT_THRESHOLD}); the planning rules say split it")
+    for item in report["subset"]:
+        warn(f"plan-check: \"{item['page']}\" scope is entirely inside "
+             f"\"{item['of']}\" ({item['files']} files); both subagents read "
+             "the same bulk, and every change there stales both pages")
+    for item in report["overlap"]:
+        warn(f"plan-check: {' and '.join(item['pages'])} share "
+             f"{item['files']} files / {item['lines']} lines; expect "
+             "duplicated prose from independent subagents")
+    return 0
+
+
 # ---------------------------------------------------------------------- prompt
 
 # Common local-only agent-guidance filenames -- often excluded from git via
@@ -1554,6 +1689,9 @@ def main(argv=None):
     sub.add_parser(
         "remap",
         help="shift drifted citations to their new line numbers (no LLM)")
+    sub.add_parser(
+        "plan-check",
+        help="shape checks on the catalog before dispatching a fan-out")
     bless_parser = sub.add_parser(
         "bless", help="mark pages as tool-written (hash -> null) after regenerating")
     bless_parser.add_argument("page_ids", nargs="+", metavar="page-id")
@@ -1570,6 +1708,7 @@ def main(argv=None):
     if args.command == "stale":
         return cmd_stale(root, check=args.check)
     command = {"scan": cmd_scan, "remap": cmd_remap,
+               "plan-check": cmd_plan_check,
                "verify": cmd_verify, "anchor": cmd_anchor}[args.command]
     return command(root)
 
