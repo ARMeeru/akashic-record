@@ -496,7 +496,17 @@ Standing generation instructions that matter:
     over prose, and a heuristic that blocked `anchor` would eventually block a correct
     page. The shape test is narrow (a call, snake_case, camelCase, a dotted or scoped
     name) and filenames are excluded, because a warning per backticked English word
-    would train the operator to ignore the class. The search is the whole cited file
+    would train the operator to ignore the class. **A filename is recognised by asking
+    git, not by a list of extensions.** `foo.go` and `users.firstName` have identical
+    shape, so nothing in the text separates them and the repository has to. The original
+    allowlist was unfinishable by construction: written against Python, it missed the
+    whole of TypeScript (187 false warnings on the first such repo, fixed in #48) and
+    then missed the whole of Go in exactly the same way (109 on the first Go repo — every
+    warning that run, on pages that were citing the files they named). A token matching
+    the basename of any tracked file is a filename. The extension list is kept *alongside*
+    that rather than replaced, since a page may legitimately name a file that is not
+    tracked here — an env file, a build artifact, one it reports as absent — and "appears
+    in no cited file" is the wrong sentence about a correct observation. The search is the whole cited file
     rather than the cited span: a page legitimately names a symbol defined elsewhere in
     the same module, and the aim is catching invention, not policing line numbers.
     A **qualified** name written in prose also matches its bare declaration: the column
@@ -670,6 +680,18 @@ required that sentence and `prompt` never emitted it, so an orchestrator had to 
 `stale`'s JSON to the rendered prompt itself; on the first external run that meant a
 throwaway script across ten pages, which is exactly the hand-assembly §4 Phase 2 warns
 causes bugs. A rule that depends on being retyped is a rule that eventually is not.
+
+**`--update` never degrades silently to a generate prompt.** When the page sits in no
+bucket the context is empty, and the flag used to render byte-identically to plain
+`prompt <id>` with nothing marking the difference. A subagent then told to *write* a page
+that already exists reads it, finds its citations correct, and changes one line — the
+commit stamp. That restamp breaks the recorded hash, so the page lands in `edited`: a
+wasted regeneration plus a false "a human touched this" marker on a page no human touched.
+An empty context now renders an explicit statement instead, saying the dependencies have
+not moved, that no goal change was detected, that a catalog with no recorded goal baseline
+looks the same, and that re-verifying and restamping is not the job. Refusing outright
+would be worse: an absent baseline is exactly the state a long-lived pre-`goal_hash`
+catalog is in, and that is when a goal-driven rewrite is most needed.
 
 `--ids <bucket>` prints one page id per line and nothing else. Acting on a report means
 iterating ids, and without it every run hand-wrote a JSON-to-shell adapter — three so

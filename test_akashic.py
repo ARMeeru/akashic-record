@@ -852,6 +852,44 @@ class TestReviewRegressions(RepoCase):
             errors = akashic.verify_repo(root)
         return errors, buf.getvalue()
 
+    def test_a_tracked_filename_is_not_an_invented_identifier(self):
+        """The extension allowlist is unfinishable by construction. Written
+        against Python, it missed all of TypeScript (187 false warnings, #48)
+        and then all of Go the same way -- 109 on the first Go repo, every
+        warning that run, because a page writing `factories.go` and citing
+        that file is looking for the string inside its own contents. Git
+        already knows which names are files."""
+        repo = self.make_repo()
+        self.write(repo, "internal/factories.go",
+                   "package internal\n\nfunc Build() int { return 1 }\n")
+        self.commit(repo)
+        self.catalog(repo, [self.page("index", scope=["internal/*"])])
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\n## Fixtures\n\n`factories.go` builds them, via "
+                   "`Build`. `imaginary_helper` does not exist.\n\n"
+                   "Sources: [internal/factories.go:1-3]"
+                   "(../../internal/factories.go#L1-L3)\n")
+        root = akashic.repo_root(repo)
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("factories.go", stderr,
+                         "a tracked basename is a filename in any language")
+        self.assertIn("imaginary_helper", stderr,
+                      "the check must still catch what it was built for")
+
+    def test_an_untracked_filename_is_still_excluded_by_shape(self):
+        """The allowlist is kept alongside the tracked set, not replaced. A
+        page may name a file that is not tracked here -- an env file, a build
+        artifact, one it reports as absent -- and "appears in no cited file"
+        is the wrong sentence about it."""
+        root = self.identifier_repo(
+            "# Index\n\n## Config\n\nThere is no `tsconfig.json` in this "
+            "repo, and `real_function` is real.\n\n"
+            "Sources: [src/app.py:1-2](../../src/app.py#L1-L2)\n")
+        errors, stderr = self.warnings_from_verify(root)
+        self.assertEqual(errors, [])
+        self.assertNotIn("tsconfig.json", stderr)
+
     def test_invented_identifier_warns_but_never_blocks(self):
         """verify proves a citation resolves; it cannot prove the prose above
         it is true. This closes the narrowest part of that gap -- a page naming
@@ -1553,8 +1591,17 @@ class TestReviewRegressions(RepoCase):
         self.assertIn("newly fall inside this page's scope", upd)
         self.assertIn("src/b.py", upd)
 
-    def test_update_prompt_is_silent_for_a_fresh_page(self):
-        root = self.prompt_repo() if hasattr(self, "prompt_repo") else None
+    def test_update_never_degrades_to_a_generate_prompt(self):
+        """`--update` used to render byte-identically to plain `prompt` when
+        the page was in no bucket, with nothing saying so. A subagent told to
+        "write" a page that already existed read it, found its citations
+        correct, and changed one line -- the commit stamp -- which then broke
+        the recorded hash and put the page in `edited`. A wasted regeneration
+        plus a false "a human touched this" marker.
+
+        An empty context is also the normal state for a goal rewritten on a
+        catalog with no recorded baseline, which is precisely when a rewrite
+        is most needed, so this says so rather than refusing."""
         repo = self.make_repo()
         self.write(repo, "src/a.py", "def a():\n    return 1\n")
         self.write(repo, ".akashic/wiki/p.md",
@@ -1565,10 +1612,15 @@ class TestReviewRegressions(RepoCase):
         root = akashic.repo_root(repo)
         akashic.anchor_repo(root)
         self.commit(repo, "anchor")
-        upd = akashic.render_prompt(root, akashic.load_catalog(root), "p",
-                                    update=True)
-        self.assertNotIn("already existed", upd)
-        self.assertNotIn("Do not append", upd)
+        catalog = akashic.load_catalog(root)
+        plain = akashic.render_prompt(root, catalog, "p")
+        upd = akashic.render_prompt(root, catalog, "p", update=True)
+        self.assertNotEqual(plain, upd, "the whole defect was that these matched")
+        self.assertIn("already existed", upd)
+        self.assertIn("no recorded goal baseline", upd,
+                      "name the commonest cause, or the reader guesses")
+        self.assertIn("restamp", upd, "counter the observed failure directly")
+        self.assertIn("Do not append", upd)
 
     def test_prompt_out_keeps_the_prompt_out_of_the_orchestrator(self):
         """The last command to get `--out` and the one dispatched most: once

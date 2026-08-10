@@ -16,6 +16,7 @@ import fnmatch
 import hashlib
 import json
 import os
+import posixpath
 import re
 import subprocess
 import sys
@@ -437,6 +438,7 @@ def check_identifiers(root, page_id, rel, body, resolved_citations):
     for lineno, path in resolved_citations:
         per_section.setdefault(lineno, []).append(path)
     warnings, cache = [], {}
+    filenames = tracked_basenames(root)
     for title, start, end in h2_sections(body):
         cited = []
         for lineno, paths in per_section.items():
@@ -444,7 +446,7 @@ def check_identifiers(root, page_id, rel, body, resolved_citations):
                 cited.extend(paths)
         if not cited:
             continue
-        for lineno, token in identifier_tokens(body, start, end):
+        for lineno, token in identifier_tokens(body, start, end, filenames):
             needles = [c.encode("utf-8", "surrogateescape")
                        for c in identifier_candidates(token)]
             if not needles:
@@ -842,10 +844,30 @@ def h2_sections(body_text):
     return sections
 
 
-def identifier_tokens(body_text, start, end):
+def tracked_basenames(root):
+    """Every tracked file's basename, for telling a filename from a symbol.
+
+    `foo.go` and `users.firstName` have the same shape, so nothing in the
+    text distinguishes them; the repository does. This started as an
+    allowlist of extensions, which is unfinishable by construction -- it was
+    written against Python, missed the whole of TypeScript (187 false
+    warnings on the first such repo, fixed in #48), and then missed the whole
+    of Go the same way (109 on the first Go repo, every warning that run).
+    The list is always one language behind wherever the tool is pointed next.
+    Git already knows which names are files here."""
+    return frozenset(posixpath.basename(p) for p in tracked_files(root))
+
+
+def identifier_tokens(body_text, start, end, filenames=frozenset()):
     """Backticked identifier-shaped tokens in lines [start, end], skipping
     fences. A `Sources:` line is skipped too: its backticks are paths, and a
-    path is checked by the citation gate, not by this one."""
+    path is checked by the citation gate, not by this one.
+
+    `filenames` is the repo's tracked basenames. The extension allowlist is
+    kept alongside it rather than replaced: a page may legitimately name a
+    file that is not tracked here (`.env`, a generated artifact, a file it
+    reports as absent), and warning that `tsconfig.json` "appears in no cited
+    file" would be the wrong sentence about the right observation."""
     tokens, in_fence = [], False
     for lineno, line in enumerate(body_text.split("\n"), start=1):
         stripped = line.strip()
@@ -860,7 +882,7 @@ def identifier_tokens(body_text, start, end):
             token = span.strip()
             if "/" in token or " " in token:
                 continue
-            if FILE_EXT_RE.search(token):
+            if token in filenames or FILE_EXT_RE.search(token):
                 continue
             if token.split(".", 1)[0] in BUILTIN_NAMESPACES:
                 continue
@@ -2063,9 +2085,27 @@ def render_prompt(root, catalog, page_id, update=False):
         f"Goal: {page['goal']}",
     ]
     if update:
-        context = regeneration_context(root, page_id)
-        if context:
-            lines += [""] + context + [""]
+        # Never silently degrade to a generate prompt. With no context this
+        # rendered byte-identically to `prompt <id>`, so a subagent told to
+        # "write" a page that already exists read it, found its citations
+        # correct, and changed one line -- the commit stamp. That restamp
+        # then broke the recorded hash and put the page in `edited`: a
+        # wasted regeneration plus a false "a human touched this" marker.
+        # An empty context is also the normal state for a goal rewritten on
+        # a catalog with no recorded baseline, which is exactly when a
+        # rewrite is most needed, so refusing would be worse than saying so.
+        lines += [""] + (regeneration_context(root, page_id) or [
+            "This page already existed and nothing explains why it is being "
+            "rewritten: its recorded dependencies have not changed, and no "
+            "goal change was detected -- which is also what a catalog with "
+            "no recorded goal baseline looks like. Write to the goal above "
+            "rather than to what the existing page says. Do not merely "
+            "re-verify the existing text and restamp it; if the goal asks "
+            "for something the page does not do, that is the change.",
+            "Rewrite the page to match the current code. Do not append a "
+            "changelog or an update summary -- pages are timeless and git "
+            "carries the history.",
+        ]) + [""]
     lines += [
         "Read these files -- this is also the ENTIRE set of files you may cite "
         "in Sources: lines (paths relative to repo root):",
