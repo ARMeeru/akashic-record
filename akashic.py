@@ -1122,8 +1122,52 @@ def compute_restated(root, done, excludes, paths):
     return out
 
 
+def diff_context(root, anchor):
+    """One snapshot of anchor..HEAD, shared by everything that needs it.
+
+    `remap` used to take a second look: `compute_stale` ran these two diffs to
+    decide what had drifted, and `remap_repo` re-ran the byte-identical pair
+    moments later because the report kept only the paths and dropped the span
+    mapping. Two snapshots of a moving repository is a race, not duplication.
+    A commit landing between them is seen by the second and not the first, so
+    a page the newer diff has made *stale* -- its cited lines genuinely changed
+    -- can still be sitting in the older report's `drifted` list, get its line
+    numbers shifted, and get blessed. `anchor` then stamps HEAD unconditionally
+    and the page is recorded fresh while describing code that moved. Stale
+    content marked fresh is the one outcome DESIGN.md calls unacceptable, and
+    it needs no bug in the arithmetic to happen: only two answers to "what
+    changed" taken at different instants.
+
+    `drift` is filled in by the staleness walk and read by `remap`, so the
+    shift arithmetic uses the mapping that classified the page rather than
+    recomputing one against a newer tree.
+
+    This travels *beside* the report and never inside it. `cmd_stale`
+    serializes that dict as the public JSON contract, and hunks are neither
+    serializable nor anyone's business outside this module."""
+    hunks = parse_diff_hunks(
+        # -U0 so a hunk covers only the lines that actually changed, letting a
+        # page ask "did this touch what I cite?" rather than "did this file
+        # move?"
+        git(root, "diff", "-U0", "-M", anchor, "HEAD").stdout)
+    modified, added, deleted, renames = parse_name_status(
+        git(root, "diff", "--name-status", "-M", "-z", anchor, "HEAD").stdout)
+    return {"hunks": hunks, "modified": modified, "added": added,
+            "deleted": deleted, "renames": renames,
+            "rename_map": dict(renames), "drift": {}}
+
+
 def compute_stale(root):
     """Read-only staleness report: which pages need what, per DESIGN.md section 5."""
+    return compute_stale_with_context(root)[0]
+
+
+def compute_stale_with_context(root):
+    """`compute_stale`, plus the diff snapshot it reached its verdict from.
+
+    Only `remap` needs the second half, and it needs it precisely so it does
+    not take a second look of its own. Everything else calls `compute_stale`
+    and never sees this."""
     catalog = load_catalog(root)
     head = git(root, "rev-parse", "HEAD").stdout.strip()
     anchor = catalog.get("anchor")
@@ -1214,14 +1258,12 @@ def compute_stale(root):
         # Computable without the anchor commit: both inputs are catalog data.
         report["restated"] = compute_restated(
             root, done, excludes, set(head_blobs))
-        return report
+        return report, None
 
-    diff = git(root, "diff", "--name-status", "-M", "-z", anchor, "HEAD").stdout
-    # -U0 so a hunk covers only the lines that actually changed, letting a
-    # page ask "did this touch what I cite?" rather than "did this file move?"
-    hunks_by_path = parse_diff_hunks(
-        git(root, "diff", "-U0", "-M", anchor, "HEAD").stdout)
-    modified, added, deleted, renames = parse_name_status(diff)
+    context = diff_context(root, anchor)
+    hunks_by_path = context["hunks"]
+    modified, added = context["modified"], context["added"]
+    deleted, renames = context["deleted"], context["renames"]
 
     # Wiki artifacts must never be staleness inputs: the wiki depending on
     # itself would break the post-anchor invariant the moment it is committed.
@@ -1260,6 +1302,9 @@ def compute_stale(root):
             if drift:
                 report["drifted"].append(
                     {"id": page["id"], "paths": sorted(drift)})
+                # Kept beside the report, not in it: `remap` needs the spans
+                # and the public JSON must not grow them.
+                context["drift"][page["id"]] = drift
 
     # Coverage: `files` entries are exact paths (never patterns — a recorded
     # root Makefile must not shadow a new nested Makefile); `scope` is globs.
@@ -1277,7 +1322,7 @@ def compute_stale(root):
     # moved) and restated (what we asked of it moved). Different causes, and
     # a reader deciding what to regenerate wants to see both.
     report["restated"] = compute_restated(root, done, excludes, head_files)
-    return report
+    return report, context
 
 
 # What a non-empty bucket means somebody has to *do*. Consumers route from
@@ -1601,23 +1646,20 @@ def remap_repo(root):
     Blessing immediately rather than in a batch at the end is deliberate: a
     rewritten body under its old recorded hash reads as a human edit, so a
     crash between the two would leave the tool's own arithmetic protected from
-    the tool. One page, one write, one bless."""
-    report = compute_stale(root)
+    the tool. One page, one write, one bless.
+
+    **One snapshot per run.** The classification and the arithmetic both come
+    from the diff context `compute_stale` reached its verdict from, never from
+    a fresh look. A second diff would be a second instant, and a page the newer
+    diff has made stale could still be shifted and blessed on the older diff's
+    say-so -- see `diff_context`."""
+    report, context = compute_stale_with_context(root)
     if not report["anchor_reachable"]:
         die("cannot remap without a reachable anchor: recorded line numbers "
             "are anchor coordinates, and there is no diff to measure drift "
             f"against ({report['anchor_state']})", code=1)
-    catalog = load_catalog(root)
-    by_id = {p["id"]: p for p in catalog["pages"]}
     edited = set(report["edited"])
     wiki = wiki_dir(root)
-
-    hunks_by_path = parse_diff_hunks(
-        git(root, "diff", "-U0", "-M", catalog["anchor"], "HEAD").stdout)
-    _, _, _, renames = parse_name_status(
-        git(root, "diff", "--name-status", "-M", "-z",
-            catalog["anchor"], "HEAD").stdout)
-    rename_map = dict(renames)
 
     remapped, skipped = [], []
     for entry in report["drifted"]:
@@ -1627,8 +1669,7 @@ def remap_repo(root):
             # number inside it is still writing to it.
             skipped.append(page_id)
             continue
-        page = by_id[page_id]
-        drift = page_drift(page.get("ranges") or {}, hunks_by_path, rename_map)
+        drift = context["drift"].get(page_id)
         if not drift:
             continue
         page_file = wiki / f"{page_id}.md"

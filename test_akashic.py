@@ -367,6 +367,57 @@ class TestStale(RepoCase):
         self.assertEqual(akashic.compute_stale(root)["drifted"], [],
                          "anchoring re-records the corrected ranges")
 
+    def test_remap_takes_exactly_one_diff_snapshot(self):
+        """The race this closes. `remap_repo` ran `compute_stale`, which took
+        both anchor..HEAD diffs, then re-ran the byte-identical pair to redo
+        arithmetic the report had thrown away. Two snapshots of a moving
+        repository is not duplication, it is two instants: a commit landing
+        between them is seen by the second and not the first, so a page the
+        newer diff has made stale can still sit in the older report's
+        `drifted` list, get shifted, and get blessed -- and `anchor` then
+        stamps HEAD and records it fresh. Stale content marked fresh is the
+        one outcome DESIGN.md calls unacceptable."""
+        repo, root = self.ranged_repo()
+        original = (repo / "src/app.py").read_text(encoding="utf-8")
+        (repo / "src/app.py").write_text("import new\n" * 5 + original,
+                                         encoding="utf-8")
+        self.commit(repo, "insert five lines above the cited block")
+
+        real_git, diffs = akashic.git, []
+
+        def counting_git(root_arg, *args, **kwargs):
+            if args and args[0] == "diff":
+                diffs.append(args)
+            return real_git(root_arg, *args, **kwargs)
+
+        with unittest.mock.patch.object(akashic, "git", counting_git):
+            remapped, _ = akashic.remap_repo(root)
+
+        self.assertEqual(remapped, ["a"], "the fixture must still remap")
+        self.assertEqual(len(diffs), len(set(diffs)),
+                         f"every diff must be taken once: {diffs}")
+        self.assertEqual(len(diffs), 2,
+                         "one -U0 hunk diff and one --name-status diff")
+
+    def test_the_diff_context_never_reaches_the_public_json(self):
+        """`cmd_stale` serializes the report as the contract, so the context
+        travels beside it. Hunks are not serializable and not anyone's
+        business outside this module."""
+        repo, root = self.ranged_repo()
+        original = (repo / "src/app.py").read_text(encoding="utf-8")
+        (repo / "src/app.py").write_text("import new\n" * 5 + original,
+                                         encoding="utf-8")
+        self.commit(repo, "insert five lines above the cited block")
+
+        report, context = akashic.compute_stale_with_context(root)
+        self.assertEqual(akashic.compute_stale(root), report,
+                         "the one-value entry point returns the same report")
+        for key in ("hunks", "drift", "rename_map", "renames"):
+            self.assertNotIn(key, report, key)
+        json.dumps(report)  # raises if the context leaked in
+        self.assertEqual(sorted(context["drift"]), ["a"],
+                         "the span mapping remap needs is carried, not redone")
+
     def test_remap_leaves_fenced_examples_alone(self):
         repo, root = self.ranged_repo()
         page = repo / ".akashic/wiki/a.md"

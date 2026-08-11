@@ -763,6 +763,30 @@ because a typo that yields an empty loop is indistinguishable from "nothing to d
    in the same step as its rewrite, since a rewritten body under its old hash would read
    as a human edit.
 
+   **One diff snapshot per remap run, and it is a correctness rule rather than a
+   performance one.** `remap` used to call `compute_stale`, which takes the two
+   anchor→HEAD diffs, and then re-run the byte-identical pair to redo arithmetic the
+   report had discarded. Two snapshots of a moving repository are two *instants*, not a
+   duplicated computation: a commit landing between them is visible to the second and
+   not the first, so a page the newer diff has made stale can still be sitting in the
+   older report's `drifted` list, get its line numbers shifted, and get blessed —
+   `remap` re-checked `page_drift` but never `touches_page`. `anchor` then stamps HEAD
+   unconditionally and the page is recorded fresh while describing code that moved.
+   Stale content marked fresh is the one outcome this design calls unacceptable, and it
+   needs no arithmetic bug to occur, only two answers to "what changed" taken at
+   different times. So the parsed diff — hunks, renames, and the per-page span mapping —
+   is built once by `diff_context` and consumed by both the classification and the
+   shift. The window is milliseconds and needs an external committer to exploit, which
+   makes it a latent defect rather than an observed one; the class is the same as a
+   fleet loop reporting clean while work exists.
+
+   That context travels **beside** the report and never inside it. `cmd_stale`
+   serializes the report dict as the public JSON contract, so `compute_stale` returns
+   only the report and `compute_stale_with_context` returns both; `remap` is the sole
+   caller of the second, and it needs the context precisely so it does not take a look
+   of its own. This does not close the wider window between a remap run and the `anchor`
+   that follows it, which is the loop's to hold, not this function's.
+
 | Bucket | Meaning | Action (agent-side) |
 |---|---|---|
 | `stale` | a file the page depends on changed | regenerate (same Phase-2 contract); regenerated citations refresh `files` at anchor time, so renames and dependency drift self-heal |
