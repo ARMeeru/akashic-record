@@ -212,7 +212,7 @@ Range-level staleness has both directions pinned. A change at line 35 does not s
 
 The blob fallback is pinned in three tests: unchanged content is provably fresh without the anchor commit, a changed blob still stales the page, a new in-scope file still stales it, and a page with no recorded blobs is never trusted. `TestRestated` covers both halves of a changed brief, whitespace-only goal edits being ignored, old catalogs staying quiet, and the bug that cost a real run: `anchor` must record a goal baseline only for pages it actually wrote. `TestAnchor` asserts the post-anchor invariant — after anchoring and committing, every bucket is empty — and that a subsequent manual edit flips exactly `edited`; `test_second_anchor_preserves_edit_protection` asserts re-anchoring never launders that marker away.
 
-Sources: [test_akashic.py:1-69](../../test_akashic.py#L1-L69), [test_akashic.py:90-332](../../test_akashic.py#L90-L332), [test_akashic.py:334-525](../../test_akashic.py#L334-L525), [test_akashic.py:527-707](../../test_akashic.py#L527-L707), [test_akashic.py:775-890](../../test_akashic.py#L775-L890)
+Sources: [test_akashic.py:1-69](../../test_akashic.py#L1-L69), [test_akashic.py:155-397](../../test_akashic.py#L155-L397), [test_akashic.py:399-590](../../test_akashic.py#L399-L590), [test_akashic.py:592-772](../../test_akashic.py#L592-L772), [test_akashic.py:840-955](../../test_akashic.py#L840-L955)
 
 ## What the tests pin down: verify, warnings and rendering
 
@@ -222,7 +222,7 @@ Both directions of each warning class are asserted, and always with `errors == [
 
 Rendering is asserted by content, because an omission in a prompt is silent and produces a confident, uninformed subagent. The page prompt must list only scope-expanded tracked files, apply the scan filters, surface untracked context docs, carry the three generation disciplines and the READ ONLY mandate, differ from the plain prompt under `--update`, and name what changed or how the brief moved. `TestPlanCheck` pins the shape findings, the lines-not-files ranking, and monotonicity. `TestPlanCritic` pins that every goal and scope reaches the judge, that all four judgments survive templating, and that a clean plan omits the findings block. `TestAudit` pins that evidence is the exact cited bytes, that the rendered prompt never names a file while the extract still carries the mapping, and that the denominator is fixed by the extract.
 
-Sources: [test_akashic.py:72-87](../../test_akashic.py#L72-L87), [test_akashic.py:709-772](../../test_akashic.py#L709-L772), [test_akashic.py:892-1298](../../test_akashic.py#L892-L1298), [test_akashic.py:1300-1470](../../test_akashic.py#L1300-L1470), [test_akashic.py:1498-1741](../../test_akashic.py#L1498-L1741), [test_akashic.py:1743-2228](../../test_akashic.py#L1743-L2228)
+Sources: [test_akashic.py:72-87](../../test_akashic.py#L72-L87), [test_akashic.py:774-837](../../test_akashic.py#L774-L837), [test_akashic.py:957-1363](../../test_akashic.py#L957-L1363), [test_akashic.py:1365-1535](../../test_akashic.py#L1365-L1535), [test_akashic.py:1563-1806](../../test_akashic.py#L1563-L1806), [test_akashic.py:1808-2293](../../test_akashic.py#L1808-L2293)
 
 ## Where the tests stop
 
@@ -230,6 +230,6 @@ The suite draws its boundary explicitly. The LLM phases have no unit tests: `Tes
 
 `TestLoop` is the one class in this file that tests code outside `akashic.py` — it imports the runner from `bin/` and covers its decision layer, the parity tripwire, the workspace gate and the branch-restore behaviour, while stating that the LLM invocation itself is not covered because it shells out. Two of its assertions bind the runner back to this module: every entry in `WORK_BUCKETS` must route to a non-clean verdict, and an action the runner does not recognise must raise rather than be guessed at, since guessing `update` is the one guess that can destroy prose. The runner itself is documented in [Maintenance Loop](./maintenance-loop.md), and the update flow that sequences these commands in [Maintenance Loop](./maintenance-loop.md) and [Skill Orchestration](./skill-orchestration.md).
 
-Sources: [test_akashic.py:1899-1903](../../test_akashic.py#L1899-L1903), [test_akashic.py:2027-2031](../../test_akashic.py#L2027-L2031), [test_akashic.py:2231-2234](../../test_akashic.py#L2231-L2234), [test_akashic.py:2305-2360](../../test_akashic.py#L2305-L2360), [test_akashic.py:2372-2392](../../test_akashic.py#L2372-L2392), [test_akashic.py:2465-2599](../../test_akashic.py#L2465-L2599)
+Sources: [test_akashic.py:1964-1968](../../test_akashic.py#L1964-L1968), [test_akashic.py:2092-2096](../../test_akashic.py#L2092-L2096), [test_akashic.py:2296-2299](../../test_akashic.py#L2296-L2299), [test_akashic.py:2370-2425](../../test_akashic.py#L2370-L2425), [test_akashic.py:2437-2457](../../test_akashic.py#L2437-L2457), [test_akashic.py:2530-2664](../../test_akashic.py#L2530-L2664)
 
 *Generated from commit `885a1135` on 2026-08-11.*
