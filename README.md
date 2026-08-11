@@ -108,7 +108,7 @@ The helper also works standalone:
 
 ```sh
 python3 akashic.py -C <repo> scan          # filtered file tree (planner input)
-python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncovered/missing/planned/drifted/restated
+python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncovered/missing/planned/drifted/restated/unblessed
 python3 akashic.py -C <repo> stale --check # same, exit 1 if any bucket is non-empty
 python3 akashic.py -C <repo> stale --ids <bucket>  # one page id per line, for shell loops
 python3 akashic.py -C <repo> verify        # citation + catalog checks (exit 1 on failure)

@@ -820,6 +820,9 @@ because a typo that yields an empty loop is indistinguishable from "nothing to d
 | `planned` | a catalog page with no generated file on disk | regenerate it, or say the run is deliberately partial. Reported rather than an error because a partly generated wiki is a valid resume state — but `verify` and `anchor` both skip non-done pages, so without this bucket a generate run whose subagents died reports `verify: ok`, stamps an anchor and shows a clean `stale` |
 | `drifted` | nothing the page cites changed, but something above it did, so the recorded line numbers now point elsewhere | run `remap`: shift each fragment by the cumulative delta above it, rewrite the human-readable text to match, bless. Zero LLM. This bucket exists because range-level staleness would otherwise leave the citation silently wrong — in bounds, so `verify` cannot see it |
 | `uncovered` | added files matching no page's scope∪files | if a coherent new module appeared, propose new catalog entries (visible as a catalog diff in review); otherwise note and ignore |
+| `missing` | a `done` page whose file is gone from disk | regenerate from the catalog entry. Distinct from `orphaned`, where the *sources* went and the page should follow; here the catalog still claims a page that no longer exists, which is a deletion nobody recorded |
+| `restated` | the page's brief changed rather than its sources: its `goal` was rewritten, or its `scope` widened onto a file that already existed | regenerate with `prompt <id> --update`, which names which of the two it was. Orthogonal to every other row — a page can be both `stale` and `restated`, and a reader deciding what to regenerate wants both |
+| `unblessed` | a non-`done` page whose file *is* on disk: written, never accepted | read it, then `bless <id> --done` if it is complete. Kept apart from `planned` because the remedies differ and one of them destroys work: `planned` means generate the page, and prescribing that for a page that already has a body discards it unread |
 
 4. The update run ends: regenerate stale pages → `verify` → `anchor` → print a
    structured report (per page: reason, files, action) that becomes the commit message.
@@ -986,6 +989,16 @@ protection (the tool's only data-loss vector), and the ≥1-commit precondition.
 One `test_akashic.py` (stdlib `unittest`; fixtures are throwaway git repos built in
 `tempfile`). The deterministic components each get the smallest check that fails if the
 logic breaks:
+
+One class is deliberately not of that shape: `TestDocBucketEnumerations` reads this
+repository's own prose and checks every hand-maintained list of the stale buckets against
+`WORK_BUCKETS`. It exists because four of them rotted simultaneously — README listed eight
+of nine, `CLAUDE.md` six, this document's own bucket table six with `missing` defined
+nowhere, and `SKILL.md`'s update flow had no `planned` bullet despite the loop routing
+planned-only repos straight into it. The only enumeration that stayed current was the
+generated wiki page. Prose cannot be *derived* from the table the way `WORK_BUCKETS` is,
+so failing loudly on disagreement is the nearest available equivalent, and without it a
+tenth bucket silently rots four files again.
 
 | Component | Check |
 |---|---|

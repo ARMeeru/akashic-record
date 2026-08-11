@@ -29,7 +29,7 @@ The helper runs against any target git repo (hard precondition: ≥1 commit):
 
 ```sh
 python3 akashic.py -C <repo> scan          # filtered file list with line counts (planner input)
-python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncovered/missing/planned
+python3 akashic.py -C <repo> stale         # JSON: stale/edited/orphaned/uncovered/missing/planned/drifted/restated/unblessed
 python3 akashic.py -C <repo> stale --check # same, exit 1 if any bucket is non-empty (runner gate)
 python3 akashic.py -C <repo> verify        # citation + catalog gate; exit 1 on any error
 python3 akashic.py -C <repo> anchor        # verify, then record deps/hashes, stamp anchor, render TOC

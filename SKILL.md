@@ -239,6 +239,11 @@ no commits, too many files — relay these to the user verbatim; they are action
      `plan-critic`'s findings land — acting on them used to write into the catalog and
      never reach the page.
    - `missing` → regenerate from the catalog entry.
+   - `planned` → a catalog entry with no page file at all: nobody generated it. Generate
+     it exactly as the generate flow does, then `bless <id> --done`. The loop routes a
+     planned-only repo straight into this flow, so it needs an entry here even though it
+     is normally a generate-run state. Contrast `unblessed` below: same non-`done`
+     status, opposite remedy, because there the file already exists.
    - `unblessed` → a page file exists but its catalog entry was never accepted, which
      means a generation subagent wrote it and then died before `bless`. **Read the page
      before deciding.** If it is complete, `bless <id> --done` accepts it as written and
