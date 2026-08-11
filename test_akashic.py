@@ -771,6 +771,72 @@ class TestRestated(RepoCase):
         self.assertIn("restated", buf.getvalue())
 
 
+class TestCatalogVersion(RepoCase):
+    """The format contract, which had zero test coverage.
+
+    Adopters commit `.akashic/` into their own repositories, so the version
+    marker is a promise to them, not an internal detail. The gate has refused
+    anything but 1 since the first commit and nothing pinned it, which meant
+    the one behaviour standing between a stranger's tree and a silent format
+    change was untested."""
+
+    def versioned_repo(self, version):
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        data = {"version": version, "anchor": None, "generated": None,
+                "language": "en", "exclude": [], "max_files": 5000,
+                "pages": [self.page("a", scope=["f1.py"])]}
+        self.write(repo, ".akashic/catalog.json", json.dumps(data, indent=2))
+        return repo
+
+    def exit_code(self, repo, *args):
+        result = subprocess.run(
+            [sys.executable, str(Path(__file__).resolve().parent / "akashic.py"),
+             "-C", str(repo), *args], capture_output=True, text=True)
+        return result.returncode, result.stdout + result.stderr
+
+    def test_an_unsupported_version_exits_2(self):
+        for version in (2, 0, "1", None, 1.5):
+            repo = self.versioned_repo(version)
+            code, out = self.exit_code(repo, "verify")
+            self.assertEqual(code, 2, f"version {version!r}: {out}")
+            self.assertIn("version", out)
+
+    def test_a_missing_version_exits_2(self):
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        self.write(repo, ".akashic/catalog.json",
+                   json.dumps({"pages": [], "max_files": 5000}))
+        code, out = self.exit_code(repo, "verify")
+        self.assertEqual(code, 2)
+        self.assertIn("version", out)
+
+    def test_a_boolean_version_is_not_the_integer_one(self):
+        """`True == 1` is Python's, not a typo of ours, so an equality test
+        alone reads a catalog whose format marker is a boolean. Same for
+        `1.0`. The marker is checked for type, not just value."""
+        for version in (True, 1.0):
+            repo = self.versioned_repo(version)
+            code, out = self.exit_code(repo, "verify")
+            self.assertEqual(code, 2, f"version {version!r} was accepted: {out}")
+
+    def test_the_gate_runs_in_every_catalog_reading_subcommand(self):
+        """A gate one subcommand skips is a gate that lets a bad catalog in
+        by the side door."""
+        repo = self.versioned_repo(999)
+        for args in (["scan"], ["stale"], ["verify"], ["anchor"],
+                     ["plan-check"], ["remap"], ["bless", "a"]):
+            code, out = self.exit_code(repo, *args)
+            self.assertEqual(code, 2, f"{args[0]} accepted version 999: {out}")
+
+    def test_version_1_still_loads(self):
+        repo = self.versioned_repo(1)
+        self.assertEqual(akashic.load_catalog(akashic.repo_root(repo))
+                         ["version"], 1)
+
+
 class TestVerify(RepoCase):
     def valid_repo(self):
         repo = self.make_repo()
