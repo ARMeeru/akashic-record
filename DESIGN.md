@@ -625,6 +625,31 @@ prose. And because `stale --check` and `classify` are two answers to one questio
 loop treats a CLEAN verdict on a repo the gate flagged as **its own defect**: it notifies
 and exits 2. That tripwire is what catches a divergence no table knows about.
 
+**The checkout is the operator's, not the loop's, and every cycle checks that before it
+believes anything.** `workspace_problems` refuses a repo whose working tree is dirty, or
+whose checkout sits on a branch a previous cycle created, or — where `origin/HEAD` makes
+it knowable — on anything other than the default branch. The refusal runs *before* the
+verdict is trusted, which is the whole point: a report read from a stranded checkout is
+not a wrong answer to handle downstream, it is an answer about a tree the fleet is not
+tracking, and `clean` is what it says most often. The three symptoms had one cause. A
+cycle ran `git switch -c` and never switched back, so after one PR the checkout sat on
+`chore/wiki-refresh` permanently and later polls read a branch upstream merges never
+advance; a dirty tree was equally unchecked, so `git add .akashic` would sweep a human's
+uncommitted wiki edits into the bot's PR; and `dirty` had been in every `stale` report
+from the start with nobody reading it, the same dead-field shape as the loop's
+`needs_work`.
+
+Refusing rather than restoring or isolating follows the loop's doctrine — fail loud over
+guess — and it invents no state. But a gate alone would have been worse than the bug:
+a loop that strands its own checkout on every success and then refuses stranded
+checkouts stops working after its first PR. So each cycle also returns the checkout to
+the branch it started on, in a `finally`, and that restore never raises: it runs while a
+real failure may already be propagating, and a switch that fails leaves the checkout
+where the next cycle's gate will name it. Undeterminable is never treated as a problem —
+an absent `origin/HEAD` means "do not check", never "assume `main`", and a git query that
+cannot run at all abstains rather than raising, because an exception escaping this gate
+would abandon every repo listed after it.
+
 It opens a **pull request** instead of committing, because unattended
 output should be read before it lands. It never regenerates a repo whose only finding is
 `edited` — a human wrote that page and hard rule 2 says leave it alone, so the loop

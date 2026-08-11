@@ -65,6 +65,84 @@ def may_auto_merge(verdict):
     return verdict in AUTO_MERGEABLE
 
 
+# Branches this loop creates. It has to recognise its own leavings: a cycle
+# that ends on one of these looks, to the next cycle, exactly like a human's
+# feature branch.
+LOOP_BRANCHES = frozenset({"chore/wiki-remap", "chore/wiki-refresh"})
+
+
+def git_says(repo, *args):
+    """A git query that answers "" when it cannot answer at all.
+
+    These back a *gate*, and a gate that raises is worse than one that
+    abstains: `process` catches RuntimeError, so an OSError from an
+    unreadable path would escape `main`'s loop and abandon every repo after
+    this one. Unanswerable means "do not check" here, the same policy
+    `default_branch` applies to a missing `origin/HEAD`."""
+    try:
+        result = run(["git", *args], cwd=repo, check=False)
+    except OSError:
+        return ""
+    return result.stdout.strip() if result.returncode == 0 else ""
+
+
+def current_branch(repo):
+    return git_says(repo, "rev-parse", "--abbrev-ref", "HEAD")
+
+
+def default_branch(repo):
+    """origin's default branch, or None when git cannot say locally.
+
+    `origin/HEAD` is set by clone and by `git remote set-head`, and is absent
+    often enough that its absence cannot be an error. None means "do not
+    check", never "assume main" -- guessing a default branch name is how a
+    gate starts refusing correct checkouts."""
+    name = git_says(repo, "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+    if not name:
+        return None
+    return name.split("/", 1)[1] if "/" in name else name
+
+
+def workspace_problems(repo, report):
+    """Why this checkout is not one the loop may use. Empty means proceed.
+
+    The loop treated the user's checkout as its workspace and never checked
+    it. Three consequences, one cause.
+
+    A cycle ran `git switch -c` and never switched back, and nothing here
+    fetches, so after one PR the checkout sat on `chore/wiki-refresh`
+    permanently. Later cycles then polled that side branch, which upstream
+    merges never advance, and the fleet reported those wikis fresh while the
+    real repo moved. That is why this refusal runs *before* the verdict is
+    trusted rather than after: a report read from a stranded checkout is not
+    a wrong answer to be handled, it is an answer about the wrong tree.
+
+    A dirty tree was equally unchecked, and `git add .akashic` would sweep a
+    human's uncommitted wiki edits into the bot's PR under `chore: refresh
+    wiki`. `compute_stale` has always reported `dirty` and nobody read it --
+    the same dead-field shape as `needs_work` was, one key over.
+
+    Refusing rather than restoring or isolating is the loop's doctrine: fail
+    loud over guess. It costs nothing, invents no state, and the alternatives
+    both mean this program mutating a checkout it does not own."""
+    problems = []
+    if report.get("dirty"):
+        problems.append("the working tree has uncommitted changes")
+    branch = current_branch(repo)
+    if branch in LOOP_BRANCHES:
+        problems.append(
+            f"the checkout is on \"{branch}\", which a previous cycle created "
+            "and did not leave; polling it would report on a branch upstream "
+            "merges never advance")
+    else:
+        default = default_branch(repo)
+        if default and branch and branch != default:
+            problems.append(
+                f"the checkout is on \"{branch}\", not the default branch "
+                f"\"{default}\"")
+    return problems
+
+
 def read_repo_list(text):
     """One repo path per line; `#` comments and blank lines ignored."""
     repos = []
@@ -170,10 +248,51 @@ def remap_repo(repo, branch, dry_run=False):
     if dry_run:
         print(f"  would: branch {branch}, remap citations, open a PR (no LLM)")
         return
+    start = current_branch(repo)
     run(["git", "switch", "-c", branch], cwd=repo)
+    try:
+        remap_cycle(repo, branch)
+    finally:
+        restore_branch(repo, start)
+    open_pr(repo, "chore(wiki): remap drifted citations",
+            "Cited lines moved without their content changing, so every line "
+            "number here was shifted by integer arithmetic from the diff. No "
+            "model ran. `verify` passed before this PR was opened.",
+            auto_merge=may_auto_merge(REMAP_ONLY))
+
+
+def restore_branch(repo, start):
+    """Put the checkout back where the cycle found it.
+
+    The gate refuses a checkout stranded on a loop branch, which makes the
+    failure loud -- but a loop that strands its own checkout on every
+    successful cycle would then refuse forever after its first PR, which is
+    loud and useless. Switching back is what keeps the gate a guard against
+    accidents rather than a countdown.
+
+    `check=False` on purpose. This runs in a `finally`, so raising here would
+    replace whatever real failure sent us into it. A switch that fails leaves
+    the checkout on the loop branch, and the next cycle's gate says so."""
+    if not start:
+        return
+    run(["git", "switch", start], cwd=repo, check=False)
+
+
+def wiki_is_dirty(repo):
+    """Whether the flow wrote anything, scoped to `.akashic`.
+
+    Repo-wide `porcelain` answered a different question: with the checkout
+    guaranteed clean at cycle start it happens to agree, but scoping it means
+    a flow that modified something *outside* the wiki cannot satisfy the
+    "did anything happen" guard, and is left dirty for the gate to catch."""
+    return bool(run(["git", "status", "--porcelain", "--", ".akashic"],
+                    cwd=repo).stdout.strip())
+
+
+def remap_cycle(repo, branch):
     run([sys.executable, str(AKASHIC), "-C", repo, "remap"])
     run([sys.executable, str(AKASHIC), "-C", repo, "verify"])
-    if not run(["git", "status", "--porcelain"], cwd=repo).stdout.strip():
+    if not wiki_is_dirty(repo):
         raise RuntimeError("remap reported drift but rewrote nothing")
     run(["git", "add", ".akashic"], cwd=repo)
     run(["git", "commit", "-m", "chore: remap drifted citations"], cwd=repo)
@@ -181,11 +300,6 @@ def remap_repo(repo, branch, dry_run=False):
     run(["git", "add", ".akashic"], cwd=repo)
     run(["git", "commit", "-m", "chore: anchor remapped wiki"], cwd=repo)
     run(["git", "push", "-u", "origin", branch], cwd=repo)
-    open_pr(repo, "chore(wiki): remap drifted citations",
-            "Cited lines moved without their content changing, so every line "
-            "number here was shifted by integer arithmetic from the diff. No "
-            "model ran. `verify` passed before this PR was opened.",
-            auto_merge=may_auto_merge(REMAP_ONLY))
 
 
 def open_pr(repo, title, body, auto_merge=False):
@@ -206,15 +320,7 @@ def open_pr(repo, title, body, auto_merge=False):
                f"({result.stderr.strip()[:200]}); it needs merging by hand")
 
 
-def update_repo(repo, branch, dry_run=False):
-    """Branch, run the skill's update flow headlessly, open a PR.
-
-    Never commits to the checked-out branch: the whole point of a PR is that
-    an unattended run's output gets read before it lands."""
-    if dry_run:
-        print(f"  would: branch {branch}, run the update flow, open a PR")
-        return
-    run(["git", "switch", "-c", branch], cwd=repo)
+def update_cycle(repo, branch):
     claude = run(["claude", "-p", "/akashic-record update"], cwd=repo,
                  check=False)
     if claude.returncode != 0:
@@ -227,12 +333,28 @@ def update_repo(repo, branch, dry_run=False):
         raise RuntimeError(
             "the update flow left the wiki unverified; refusing to open a PR: "
             f"{verify.stdout.strip()[:400]}")
-    if not run(["git", "status", "--porcelain"], cwd=repo).stdout.strip():
+    if not wiki_is_dirty(repo):
         raise RuntimeError(
             "the update flow reported work but changed nothing")
     run(["git", "add", ".akashic"], cwd=repo)
     run(["git", "commit", "-m", "chore: refresh wiki"], cwd=repo)
     run(["git", "push", "-u", "origin", branch], cwd=repo)
+
+
+def update_repo(repo, branch, dry_run=False):
+    """Branch, run the skill's update flow headlessly, open a PR.
+
+    Never commits to the checked-out branch: the whole point of a PR is that
+    an unattended run's output gets read before it lands."""
+    if dry_run:
+        print(f"  would: branch {branch}, run the update flow, open a PR")
+        return
+    start = current_branch(repo)
+    run(["git", "switch", "-c", branch], cwd=repo)
+    try:
+        update_cycle(repo, branch)
+    finally:
+        restore_branch(repo, start)
     open_pr(repo, "chore(wiki): refresh stale pages",
             "Pages regenerated because their sources changed. `verify` passed, "
             "but these contain generated prose: verification proves the "
@@ -249,6 +371,17 @@ def process(repo, dry_run=False):
     except RuntimeError as exc:
         notify(f"{repo}: {exc}")
         return 2
+    # Before the verdict, not after. A report read from a stranded or dirty
+    # checkout is not a wrong answer to be handled downstream -- it is an
+    # answer about a tree the fleet is not tracking, and "clean" is exactly
+    # what it says most often.
+    problems = workspace_problems(repo, report)
+    if problems:
+        notify(f"{repo}: refusing to run a cycle: " + "; ".join(problems) +
+               ". The loop needs a clean checkout on the default branch, and "
+               "will not switch, stash or fetch on your behalf.")
+        return 2
+
     try:
         verdict = classify(report)
     except RuntimeError as exc:
