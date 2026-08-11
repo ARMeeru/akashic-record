@@ -137,8 +137,14 @@ def load_catalog(root, required=True):
         catalog = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, UnicodeDecodeError) as exc:
         die(f"{path.relative_to(root)} is not valid JSON: {exc}")
-    if not isinstance(catalog, dict) or catalog.get("version") != 1:
-        die(f"{path.relative_to(root)}: unsupported or missing \"version\" (expected 1)")
+    # The integer 1, not merely something equal to it. JSON `true` and `1.0`
+    # both satisfy `== 1` in Python -- `True == 1` is the language's, not a
+    # typo of ours -- and a catalog whose format marker is a boolean is
+    # corrupt in a way worth refusing rather than reading on through.
+    version = catalog.get("version") if isinstance(catalog, dict) else None
+    if type(version) is not int or version != 1:
+        die(f"{path.relative_to(root)}: unsupported or missing \"version\" "
+            "(expected the integer 1)")
     if not isinstance(catalog.get("pages"), list):
         die(f"{path.relative_to(root)}: \"pages\" must be a list")
     rel = path.relative_to(root)

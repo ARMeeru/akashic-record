@@ -107,6 +107,23 @@ Reparenting here is a one-line catalog edit; no file moves, ever.
 }
 ```
 
+- `version` — the format marker, and a **contract**, because adopters commit `.akashic/`
+  into their own trees. The supported value is exactly the integer `1`. Anything else —
+  higher, lower, missing, or the wrong type — refuses with **exit 2** and a per-file
+  message, in every catalog-reading subcommand, before any other field is inspected. The
+  integer part is enforced rather than implied: Python makes `True == 1` and `1.0 == 1`
+  true, so an equality test alone would read a catalog whose format marker is a boolean.
+  Silent format drift is worse for someone whose repository holds the artifact than a
+  loud refusal is.
+
+  **Additive optional fields never bump the version.** `goal_hash`, `blobs` and `ranges`
+  were all added to catalogs already in the field, and each follows the same rule: absent
+  means say nothing, never guess. A reader that predates them keeps working, and a reader
+  that has them stays quiet on a catalog that does not. A bump is reserved for a change
+  that makes an older reader wrong rather than merely less informed, it is made by the
+  release that introduces the incompatible reader, and it obligates a stated migration
+  path. There is no version 2, and adding one is a decision, not a consequence.
+
 - `goal` — the per-page generation brief (Qoder stores exactly this per catalog node,
   encrypted; here it is plaintext and user-editable).
 - `scope` — glob allowlist; **doubles as generation input scope and coarse staleness
