@@ -87,6 +87,71 @@ class TestScan(RepoCase):
                          "lockfile, excluded glob, and .akashic itself")
 
 
+REPO = Path(__file__).resolve().parent
+
+
+class TestDocBucketEnumerations(unittest.TestCase):
+    """Every hand-maintained list of the stale buckets, checked against the
+    one definition.
+
+    This is the only test in the suite that reads the repository's own prose,
+    and it earns the exception. Four separate enumerations had rotted at once
+    -- README listed eight of nine, CLAUDE.md six, DESIGN.md's table six with
+    `missing` defined nowhere at all, and SKILL.md's update flow had no
+    `planned` bullet even though the loop routes planned-only repos straight
+    into it. Every one was a copy of `WORK_BUCKETS` maintained by hand, which
+    is the same failure the loop's own hardcoded bucket list had in code. The
+    only enumeration that stayed current was the generated wiki page, which
+    is the tool's thesis demonstrated on its own repository.
+
+    A doc cannot be derived from the table the way `WORK_BUCKETS` is, so the
+    next best thing is failing loudly when it disagrees. Without this, adding
+    a tenth bucket rots four files again and nothing says so."""
+
+    def read(self, name):
+        return (REPO / name).read_text(encoding="utf-8")
+
+    def one_line_enumeration(self, name):
+        """The `stale  # JSON: a/b/c` comment in a fenced command block."""
+        for line in self.read(name).split("\n"):
+            if "akashic.py" in line and "# JSON:" in line:
+                return line.split("# JSON:", 1)[1].strip().split("/")
+        self.fail(f"{name} no longer carries a `# JSON:` bucket list; if that "
+                  "was deliberate, delete this assertion with it")
+
+    def test_readme_and_claude_md_list_every_bucket_in_order(self):
+        for name in ("README.md", "CLAUDE.md"):
+            self.assertEqual(tuple(self.one_line_enumeration(name)),
+                             akashic.WORK_BUCKETS, name)
+
+    def test_the_design_bucket_table_has_a_row_per_bucket(self):
+        rows, in_table = [], False
+        for line in self.read("DESIGN.md").split("\n"):
+            if line.startswith("| Bucket |"):
+                in_table = True
+                continue
+            if in_table:
+                if not line.startswith("|"):
+                    break
+                cell = line.split("|")[1].strip().strip("`")
+                if cell and not set(cell) <= set("-"):
+                    rows.append(cell)
+        self.assertTrue(rows, "the bucket table moved or lost its header")
+        self.assertEqual(set(rows), set(akashic.WORK_BUCKETS),
+                         "DESIGN.md is normative; a bucket with no row is "
+                         "undefined there")
+
+    def test_the_skill_update_flow_acts_on_every_bucket(self):
+        flow = self.read("SKILL.md").split("## Flow: update", 1)
+        self.assertEqual(len(flow), 2, "the update flow heading moved")
+        body = flow[1].split("\n## ", 1)[0]
+        acted = {m for m in akashic.WORK_BUCKETS
+                 if f"- `{m}` →" in body}
+        self.assertEqual(acted, set(akashic.WORK_BUCKETS),
+                         "a bucket the update flow never acts on is a bucket "
+                         "whose remedy nobody wrote down")
+
+
 class TestStale(RepoCase):
     def test_stale_orphaned_uncovered_mapping(self):
         """The canonical incremental-mechanism test: edit f1, delete f2, add f3
