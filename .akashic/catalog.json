@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "62b2f0ac5f9a8bd8c959103eb0716b7fbbdb3553",
-  "generated": "2026-08-11T16:14:49Z",
+  "anchor": "ec52626512d2361ec4d6330e62b59de66bd146c9",
+  "generated": "2026-08-11T16:23:24Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -41,7 +41,7 @@
         "DESIGN.md": "035e5c247e03552e9137d47fa15178eba258612f",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
         "README.md": "007ebdf68cc31da46ce391c1f85e183139ae73b9",
-        "SECURITY.md": "11afb477e48693ee760c6f4225ea73066e50efa7"
+        "SECURITY.md": "bc486cb928542e295ce788c04abf64b0c8749b36"
       },
       "ranges": {
         "CHANGELOG.md": [
