@@ -31,10 +31,27 @@ HERE = Path(__file__).resolve().parent
 AKASHIC = HERE.parent / "akashic.py"
 DEFAULT_REPO_LIST = Path.home() / ".config" / "akashic-record" / "repos"
 
+# The work model is imported, never restated. This file used to keep its own
+# list of which buckets mean work, and that copy went stale the same day two
+# buckets were added to the core -- the failure this import exists to prevent.
+sys.path.insert(0, str(HERE.parent))
+import akashic  # noqa: E402
+
 CLEAN = "clean"
 NEEDS_UPDATE = "needs-update"
 REVIEW_ONLY = "review-only"
 REMAP_ONLY = "remap-only"
+
+# Action names in akashic.BUCKET_ACTIONS -> this loop's verdicts.
+ACTION_VERDICTS = {
+    "update": NEEDS_UPDATE,
+    "remap": REMAP_ONLY,
+    "review": REVIEW_ONLY,
+}
+# Most-to-least urgent. A repo with both drifted and stale pages is updated,
+# because regeneration rewrites the citations remap would have shifted; a repo
+# whose only finding is `edited` is shown to a human and never touched.
+VERDICT_PRECEDENCE = (NEEDS_UPDATE, REMAP_ONLY, REVIEW_ONLY)
 
 # Only a remap PR may merge itself. Its diff is line numbers computed by
 # integer arithmetic from a git diff -- no model produced any of it, and a
@@ -61,31 +78,46 @@ def read_repo_list(text):
 def classify(report):
     """What this repo needs, from a `stale` report.
 
-    `edited` is deliberately not lumped in with the rest. A human edited that
-    page, hard rule 2 says never overwrite it, and regenerating is exactly the
-    wrong response -- so a repo whose only finding is `edited` is reported for
-    a human to look at and never handed to an LLM. A repo with both gets
-    updated for the other buckets; the edited pages are skipped by the update
-    flow itself, not by this classifier."""
-    work = {bucket: report.get(bucket) or []
-            for bucket in ("stale", "orphaned", "uncovered", "missing",
-                           "planned")}
-    if any(work.values()):
-        return NEEDS_UPDATE
-    if report.get("drifted"):
-        # Cited lines moved without changing. That is arithmetic, so it gets
-        # fixed by `remap` and never reaches a model -- the cheapest possible
-        # cycle, and the only kind whose PR contains no generated prose.
-        return REMAP_ONLY
-    if report.get("edited"):
-        return REVIEW_ONLY
+    Routing comes from `akashic.BUCKET_ACTIONS` rather than a list kept here.
+    The list kept here is what broke: it covered every bucket that existed when
+    it was written, two more were added to the core hours later, and a
+    restated-only or unblessed-only repo classified as clean from then on.
+
+    `edited` gets its own action and never folds into update. A human edited
+    that page, hard rule 2 says never overwrite it, and regenerating is exactly
+    the wrong response -- so a repo whose only finding is `edited` is reported
+    for a human and never handed to an LLM. A repo with both gets updated for
+    the other buckets; the edited pages are skipped by the update flow itself,
+    not by this classifier.
+
+    An action this loop does not recognize raises. Defaulting to update would
+    hand a future edited-like bucket to a model and destroy prose, so the one
+    safe behaviour for an unknown action is to stop.
+
+    Drifted stays its own verdict: cited lines moved without their content
+    changing, which is arithmetic, so `remap` fixes it and no model runs -- the
+    cheapest cycle, and the only kind whose PR contains no generated prose."""
+    verdicts = set()
+    # Iterate the routing table, not the derived tuple: the table is the
+    # authority on what a bucket means, and reading the copy would reintroduce
+    # a one-step version of the indirection that drifted.
+    for bucket, action in akashic.BUCKET_ACTIONS.items():
+        if not report.get(bucket):
+            continue
+        if action not in ACTION_VERDICTS:
+            raise RuntimeError(
+                f"bucket \"{bucket}\" has action \"{action}\", which this loop "
+                "does not know how to run; refusing to guess")
+        verdicts.add(ACTION_VERDICTS[action])
+    for verdict in VERDICT_PRECEDENCE:
+        if verdict in verdicts:
+            return verdict
     return CLEAN
 
 
 def summarize(report):
     parts = [f"{bucket}={len(report[bucket])}"
-             for bucket in ("stale", "edited", "orphaned", "uncovered",
-                            "missing", "planned", "drifted")
+             for bucket in akashic.WORK_BUCKETS
              if report.get(bucket)]
     if report.get("anchor_state", "ok") != "ok":
         parts.append(report["anchor_state"])
@@ -217,8 +249,27 @@ def process(repo, dry_run=False):
     except RuntimeError as exc:
         notify(f"{repo}: {exc}")
         return 2
-    verdict = classify(report)
+    try:
+        verdict = classify(report)
+    except RuntimeError as exc:
+        notify(f"{repo}: {exc}")
+        return 2
     print(f"  {summarize(report)} -> {verdict}")
+
+    # The parity tripwire. `--check` exits 1 when any work bucket is non-empty,
+    # so the gate and the classifier are two answers to one question and they
+    # must agree. Disagreement is a defect in this file, not reviewable content
+    # in the repo, and it is the only guard that catches a divergence no table
+    # knows about -- including a bucket added to a newer core than the routing
+    # here was written against. Exit 2, because a loop quietly reporting clean
+    # while the gate says otherwise is precisely the failure the zero-token
+    # story depends on not happening.
+    if needs_work and verdict == CLEAN:
+        notify(f"{repo}: stale --check reports outstanding work but the loop "
+               f"classified it {CLEAN} ({summarize(report)}). The loop's "
+               "routing is out of step with akashic.py's work buckets; this is "
+               "a bug in akashic_loop.py, not something to fix in the repo.")
+        return 2
 
     if verdict == CLEAN:
         return 0

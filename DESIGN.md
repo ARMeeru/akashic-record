@@ -611,6 +611,20 @@ true, and that gap is precisely what a reader is for. Requesting auto-merge rath
 merging is deliberate: the required checks are the real gate, so a red run holds the PR
 open instead of landing it.
 
+**The loop's routing is derived, never restated.** `BUCKET_ACTIONS` maps every work
+bucket to one of `update`, `remap` or `review`, and `WORK_BUCKETS` is derived from its
+keys, so a bucket no action covers cannot exist. `classify` reads that table; a repo's
+verdict is the most urgent action any non-empty bucket asks for, in the order
+update → remap → review. The loop previously kept its own list of buckets that mean work,
+and it drifted the same day `restated` and `unblessed` were added: a repo whose only
+finding was a corrected brief or an unaccepted page classified as clean, and `summarize`
+— a second hardcoded enumeration — printed `clean -> clean` while the work sat there.
+An action a consumer does not recognize must fail loudly rather than default to `update`,
+because a future bucket carrying edited-like semantics handed to a model would destroy
+prose. And because `stale --check` and `classify` are two answers to one question, the
+loop treats a CLEAN verdict on a repo the gate flagged as **its own defect**: it notifies
+and exits 2. That tripwire is what catches a divergence no table knows about.
+
 It opens a **pull request** instead of committing, because unattended
 output should be read before it lands. It never regenerates a repo whose only finding is
 `edited` — a human wrote that page and hard rule 2 says leave it alone, so the loop

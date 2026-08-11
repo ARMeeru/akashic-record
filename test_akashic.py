@@ -14,6 +14,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -2249,6 +2250,95 @@ class TestLoop(RepoCase):
                   "missing": [], "planned": ["ghost"]}
         self.assertEqual(akashic_loop.classify(report),
                          akashic_loop.NEEDS_UPDATE)
+
+    def only(self, bucket, *ids):
+        """A report where exactly one work bucket is non-empty."""
+        report = {b: [] for b in akashic.WORK_BUCKETS}
+        report[bucket] = list(ids)
+        return report
+
+    def test_restated_only_is_not_clean(self):
+        """The drift this closes. `restated` was added to the core and the
+        loop's own hardcoded list was never touched, so a repo whose only
+        finding was a corrected brief reported clean and the brief stayed
+        unwritten."""
+        self.assertEqual(
+            akashic_loop.classify(self.only("restated", {"id": "p"})),
+            akashic_loop.NEEDS_UPDATE)
+
+    def test_unblessed_only_is_not_clean(self):
+        """Same drift, other bucket. A page written by a subagent that died
+        before `bless` is real work, and the update flow reads it before
+        accepting it, so routing it to update does not risk hard rule 2."""
+        self.assertEqual(
+            akashic_loop.classify(self.only("unblessed", "half")),
+            akashic_loop.NEEDS_UPDATE)
+
+    def test_every_work_bucket_routes_somewhere(self):
+        """The point of deriving WORK_BUCKETS from the action table: a bucket
+        no action covers cannot exist, and an action this loop cannot run must
+        raise rather than be guessed at."""
+        for bucket in akashic.WORK_BUCKETS:
+            verdict = akashic_loop.classify(self.only(bucket, "x"))
+            self.assertNotEqual(verdict, akashic_loop.CLEAN, bucket)
+            self.assertIn(verdict, akashic_loop.VERDICT_PRECEDENCE, bucket)
+        self.assertEqual(tuple(akashic.BUCKET_ACTIONS), akashic.WORK_BUCKETS)
+
+    def test_an_unknown_action_refuses_rather_than_updating(self):
+        """Guessing `update` is the one guess that can destroy prose: a future
+        bucket with edited-like semantics handed to an LLM violates hard
+        rule 2. Unknown means stop."""
+        original = dict(akashic.BUCKET_ACTIONS)
+        akashic.BUCKET_ACTIONS["quarantined"] = "quarantine"
+        try:
+            with self.assertRaises(RuntimeError) as ctx:
+                akashic_loop.classify({"quarantined": ["p"]})
+            self.assertIn("refusing to guess", str(ctx.exception))
+        finally:
+            akashic.BUCKET_ACTIONS.clear()
+            akashic.BUCKET_ACTIONS.update(original)
+
+    def test_edited_still_never_routes_to_update(self):
+        """Hard rule 2 predates this refactor and must survive it."""
+        self.assertEqual(akashic_loop.classify(self.only("edited", "p")),
+                         akashic_loop.REVIEW_ONLY)
+        both = self.only("edited", "p")
+        both["stale"] = [{"id": "q"}]
+        self.assertEqual(akashic_loop.classify(both),
+                         akashic_loop.NEEDS_UPDATE,
+                         "the update flow skips edited pages itself")
+
+    def test_summarize_names_every_non_empty_bucket(self):
+        """The second hardcoded enumeration. It omitted the same two buckets
+        and fell back to the literal "clean", so the log line read
+        `clean -> clean` while work was outstanding."""
+        self.assertEqual(akashic_loop.summarize(self.only("restated", {"id": "p"})),
+                         "restated=1")
+        self.assertEqual(akashic_loop.summarize(self.only("unblessed", "half")),
+                         "unblessed=1")
+        self.assertEqual(akashic_loop.summarize(self.only("stale")), "clean")
+
+    def test_gate_disagreeing_with_the_verdict_exits_2(self):
+        """The parity tripwire. It is the only guard that catches a bucket the
+        routing table does not know about, so it must fire on a CLEAN verdict
+        whose gate said otherwise -- and must not fire when they agree."""
+        report = {b: [] for b in akashic.WORK_BUCKETS}
+        calls = []
+        with unittest.mock.patch.object(
+                akashic_loop, "stale_report", lambda repo: (report, True)), \
+             unittest.mock.patch.object(
+                akashic_loop, "notify", lambda msg: calls.append(msg)):
+            self.assertEqual(akashic_loop.process("/nowhere"), 2)
+        self.assertTrue(calls, "a silent tripwire is not a tripwire")
+        self.assertIn("bug in akashic_loop.py", calls[0])
+
+        calls.clear()
+        with unittest.mock.patch.object(
+                akashic_loop, "stale_report", lambda repo: (report, False)), \
+             unittest.mock.patch.object(
+                akashic_loop, "notify", lambda msg: calls.append(msg)):
+            self.assertEqual(akashic_loop.process("/nowhere"), 0)
+        self.assertEqual(calls, [], "agreement must stay silent")
 
     def test_gate_runs_against_a_real_repo_and_costs_no_tokens(self):
         repo = self.make_repo()

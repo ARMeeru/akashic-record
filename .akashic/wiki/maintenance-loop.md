@@ -1,77 +1,95 @@
 # Maintenance Loop
 
-`bin/akashic_loop.py` is what turns akashic-record from a generator you remember to run into a wiki that keeps itself current. It walks a list of repositories, asks each one a question that costs nothing, and spends an LLM only where the answer says something actually changed. Everything it decides is downstream of the deterministic report described in [Deterministic Core](./deterministic-core.md), and the update it triggers is the flow documented in [Skill Orchestration](./skill-orchestration.md).
+`bin/akashic_loop.py` is what turns akashic-record from a generator you remember to run into a wiki that keeps itself current. It walks a list of repositories, asks each one a question that costs nothing, and spends an LLM only where the answer says something actually changed. It is deliberately not a watcher or a daemon: no long-lived process, no subscriptions, no state of its own, just a periodic poll of a deterministic check. Everything it decides is downstream of the report described in [Deterministic Core](./deterministic-core.md), and the update it triggers is the flow documented in [Skill Orchestration](./skill-orchestration.md).
 
 ## The zero-token gate
 
-The loop's economics rest on one property: asking "does this repo need work?" is free. Each repo is put through `akashic.py stale --check` as a subprocess, and only exit codes 0 and 1 are treated as answers — 0 meaning nothing outstanding, 1 meaning something is. Any other exit code, or output that will not parse as JSON, is raised rather than absorbed, so a repo the gate cannot read never resembles a repo with nothing to do.
+The loop's economics rest on one property: asking "does this repo need work?" is free. Each repo is put through `akashic.py stale --check` as a subprocess, and only exit codes 0 and 1 are treated as answers — 0 meaning nothing outstanding, 1 meaning something is. Any other exit code, or output that will not parse as JSON, raises rather than being absorbed, so a repo the gate cannot read never resembles a repo with nothing to do.
 
-That distinction is the whole reason a schedule is reasonable rather than extravagant. A quiet fleet can be polled as often as you like, because the polling never reaches a model at all.
+That distinction is the whole reason a schedule is reasonable rather than extravagant. A quiet fleet can be polled as often as you like, because the polling never reaches a model at all, and a busy one pays only for what changed.
 
-Sources: [bin/akashic_loop.py:1-27](../../bin/akashic_loop.py#L1-L27), [bin/akashic_loop.py:109-121](../../bin/akashic_loop.py#L109-L121)
+Sources: [bin/akashic_loop.py:2-21](../../bin/akashic_loop.py#L2-L21), [bin/akashic_loop.py:141-153](../../bin/akashic_loop.py#L141-L153)
 
 ## Four verdicts, and the one that never reaches an LLM
 
-`classify` reduces a `stale` report to one of four constants, which `process` then acts on:
+`classify` reduces a `stale` report to one of four constants — `clean`, `needs-update`, `remap-only`, `review-only` — which `process` then acts on:
 
-- **clean** — nothing in any bucket. The repo is skipped and costs nothing.
-- **needs-update** — anything in `stale`, `orphaned`, `uncovered`, `missing` or `planned`. The repo goes through the update flow.
-- **remap-only** — the sole finding is `drifted`: cited lines moved without changing. That is arithmetic, so `remap` fixes it and no model is ever invoked. The resulting PR contains no generated prose at all, which is what makes it the one safe candidate for automatic merging.
-- **review-only** — `edited` is the *sole* finding. This is the interesting case: a human wrote that page, and hard rule 2 says never overwrite detected human work, so regenerating would be exactly the wrong response. The loop notifies the owner and returns 1 rather than handing the repo to a model.
+- **clean** — no work bucket is populated. The repo is skipped and costs nothing.
+- **needs-update** — the report holds anything whose action is `update`. The repo goes through the skill's update flow.
+- **remap-only** — the only findings route to `remap`: cited lines moved without their content changing. That is arithmetic, so `remap` fixes it and no model runs. It is the cheapest cycle, and the only kind whose PR contains no generated prose.
+- **review-only** — the only findings route to `review`, which today means `edited`. A human wrote that page, hard rule 2 says never overwrite it, and regenerating would be exactly the wrong response — so the loop notifies the owner and returns 1 rather than handing the repo to a model.
 
-A repo with `edited` *alongside* real work is still classified `needs-update`, because the other buckets genuinely need doing. Skipping the edited pages themselves is the update flow's job, not the classifier's — the loop does not try to re-implement a rule the skill already enforces.
+The routing table is imported, never restated: `classify` iterates `akashic.BUCKET_ACTIONS` and maps each action through a small `ACTION_VERDICTS` dictionary. The docstring records why. This file used to keep its own list of which buckets mean work; two buckets were added to the core hours later, and a repo whose only finding was one of them classified as clean from then on. An action the loop does not recognise raises instead of defaulting, because defaulting to `update` would hand a future edited-like bucket to a model and destroy prose.
 
-Sources: [bin/akashic_loop.py:34-44](../../bin/akashic_loop.py#L34-L44), [bin/akashic_loop.py:61-82](../../bin/akashic_loop.py#L61-L82), [bin/akashic_loop.py:212-249](../../bin/akashic_loop.py#L212-L249)
+`summarize` was the second copy of that same hardcoded enumeration, omitting the same two buckets, and its `or "clean"` fallback is where the failure was actually visible: a repo with outstanding work printed `clean -> clean`, and since the `clean` verdict returns before the dry-run notification, report-only mode said nothing at all about exactly those repos. It now iterates `akashic.WORK_BUCKETS` for the same reason `classify` iterates the action table, formatting each populated bucket as `name=count` and appending `anchor_state` when it is anything other than `ok`.
 
-## Which PRs may merge themselves
+Where several verdicts apply at once, `VERDICT_PRECEDENCE` picks the most urgent: update beats remap (regeneration rewrites the citations remap would have shifted), and both beat review. So a repo with `edited` *alongside* real work is still updated — skipping the edited pages themselves is the update flow's job, not the classifier's.
 
-Exactly one kind. A remap PR contains nothing a model wrote: every line number in it was shifted by integer arithmetic from a diff, and a reviewer can re-derive the whole change in seconds. It requests auto-merge as soon as it is opened.
+Sources: [bin/akashic_loop.py:40-61](../../bin/akashic_loop.py#L40-L61), [bin/akashic_loop.py:78-115](../../bin/akashic_loop.py#L78-L115), [bin/akashic_loop.py:118-124](../../bin/akashic_loop.py#L118-L124), [bin/akashic_loop.py:274-300](../../bin/akashic_loop.py#L274-L300)
 
-A PR carrying regenerated pages never does. `verify` proves that the citations resolve; it says nothing about whether the sentences above them are true, and that gap is precisely what a reader is for. The policy lives in one predicate that both paths call, so the two cannot drift apart. If it ever inverted, unread generated prose would start landing on the default branch by itself; the test that pins the direction lives with the rest of the suite, covered in [Deterministic Core](./deterministic-core.md).
+## The parity tripwire
 
-Auto-merge is *requested*, not performed. The branch's required status checks are the real gate, so a red run holds the PR open rather than landing it. Where a repository has auto-merge switched off the request fails harmlessly and the PR waits for a human, which is why that path warns instead of raising.
+`stale --check` exits 1 whenever any work bucket is non-empty, so the gate and the classifier are two answers to one question and they have to agree. `process` compares them. If the gate says there is work and the classifier says `clean`, the loop notifies and exits 2, and the message names `akashic_loop.py` as the thing to fix rather than the repo.
 
-Sources: [bin/akashic_loop.py:39-48](../../bin/akashic_loop.py#L39-L48), [bin/akashic_loop.py:159-174](../../bin/akashic_loop.py#L159-L174)
+That is the guard for the divergence no table can catch by itself — including a bucket added to a newer core than the routing here was written against. A loop quietly reporting a clean fleet while the gate disagrees is precisely the failure the zero-token story depends on not happening.
+
+Sources: [bin/akashic_loop.py:244-272](../../bin/akashic_loop.py#L244-L272)
 
 ## Pull request, not commit
 
-When a repo needs updating, the loop creates a branch, runs the skill's update flow headlessly via `claude -p`, and opens a pull request. It never commits to whatever branch was checked out.
+Neither live path commits to the branch that happened to be checked out. Both start with `git switch -c` onto a fixed branch name — `chore/wiki-remap` for a remap, `chore/wiki-refresh` for an update — and end at `gh pr create`.
 
-Before it will open that PR, three things must hold: the update flow itself must exit 0, `verify` must then exit 0, and the working tree must actually contain changes. A flow that reports work but changes nothing, or that leaves the wiki unverified, raises instead of producing a PR — the loop refuses to present unverified output as a finished result.
+The remap path runs `remap`, then `verify`, then guards that `git status --porcelain` is non-empty ("remap reported drift but rewrote nothing"), commits, runs `anchor`, commits the anchor separately, pushes, and opens the PR.
 
-The reasoning behind the PR is that this output is produced while nobody is watching. A pull request is the cheapest possible place to put a human back in the path without making the loop wait for one.
+The update path invokes the skill headlessly as `claude -p "/akashic-record update"` — by search over the file, that line is its only invocation of a model — and then requires three things before it will open a PR: the update flow must exit 0, `verify` must then exit 0, and the working tree must actually contain changes. A flow that leaves the wiki unverified, or that reported work and changed nothing, raises instead of producing a PR. The loop will not present unverified output as a finished result.
 
-Sources: [bin/akashic_loop.py:124-130](../../bin/akashic_loop.py#L124-L130), [bin/akashic_loop.py:177-209](../../bin/akashic_loop.py#L177-L209)
+The reasoning behind the PR is stated in the code: this output is produced while nobody is watching, and a pull request is the cheapest place to put a human back in the path without making the loop wait for one.
+
+Sources: [bin/akashic_loop.py:156-188](../../bin/akashic_loop.py#L156-L188), [bin/akashic_loop.py:209-241](../../bin/akashic_loop.py#L209-L241), [bin/akashic_loop.py:284-300](../../bin/akashic_loop.py#L284-L300)
+
+## Which PRs may merge themselves
+
+Exactly one kind. `AUTO_MERGEABLE` is a frozen set containing only `remap-only`, and both paths ask the same `may_auto_merge` predicate, so the two cannot drift apart. A remap PR contains nothing a model wrote — every line number in it was shifted by integer arithmetic from a git diff — and a reviewer can re-derive the whole change in seconds.
+
+A PR carrying regenerated pages never merges itself. `verify` proves that the citations resolve; it says nothing about whether the sentences above them are true, and that gap is exactly what a human is for. Its PR body says so out loud, ending with "Read the diff."
+
+Auto-merge is *requested*, not performed. The branch's required status checks are the real gate, so a red run holds the PR open rather than landing it. Where a repository has auto-merge switched off the request fails harmlessly and the PR waits for a human, which is why `open_pr` warns through `notify` instead of raising there.
+
+Sources: [bin/akashic_loop.py:56-65](../../bin/akashic_loop.py#L56-L65), [bin/akashic_loop.py:184-206](../../bin/akashic_loop.py#L184-L206), [bin/akashic_loop.py:236-241](../../bin/akashic_loop.py#L236-L241)
 
 ## Never exit 0 on failure
 
-The exit-code contract is the loop's most load-bearing property, and it inverts the usual instinct to keep a scheduled job quiet:
+The exit-code contract is the loop's most load-bearing property, and it inverts the usual instinct to keep a scheduled job quiet. `process` returns a per-repo contribution — 0 fine, 1 needs a human, 2 failed:
 
 ```mermaid
 flowchart TD
     R[repo] --> G[stale --check]
-    G -- unreadable --> E2[exit 2, notify]
-    G -- clean --> Z[exit 0]
-    G -- edited only --> H[exit 1, notify: needs a human]
-    G -- real work --> U[branch, update, verify]
-    U -- verify fails or no changes --> E2
-    U -- ok --> PR[open PR, exit 0]
+    G -- unreadable or unparseable --> E2[notify, 2]
+    G --> C[classify]
+    C -- unknown action --> E2
+    C -- clean, gate agrees --> Z[0]
+    C -- clean, gate says work --> E2
+    C -- review-only --> H[notify: edited by hand, 1]
+    C -- remap-only --> RM[remap, verify, anchor, PR, 0]
+    C -- needs-update --> U[claude -p update, verify]
+    U -- failed or nothing changed --> E2
+    U -- ok --> PR[commit, push, PR, 0]
 ```
 
-Sources: [bin/akashic_loop.py:212-249](../../bin/akashic_loop.py#L212-L249)
+Sources: [bin/akashic_loop.py:244-300](../../bin/akashic_loop.py#L244-L300)
 
-Across a fleet the worst outcome wins, so one broken repo cannot be hidden by nine healthy ones. A missing or empty repo list is itself a failure rather than a quiet no-op, because a loop configured into silence looks identical to a loop with nothing to do. The stated reason is that a set-and-forget loop failing silently fossilizes the wiki, which is worse than having no loop at all: you would go on believing the docs were current.
+Across a fleet the worst outcome wins — `main` folds the per-repo codes with `max` — so one broken repo cannot be hidden by nine healthy ones. A missing or empty repo list is itself a failure returning 2 rather than a quiet no-op, because a loop configured into silence looks identical to a loop with nothing to do. The stated reason for all of it is in the module docstring: a loop that fails silently fossilizes the wiki, which is worse than having no loop, since you would go on believing the docs were current.
 
-Failures reach the owner through `notify`, which always writes to stderr — enough for a scheduler that mails output — and additionally pipes the message to whatever command `$AKASHIC_NOTIFY` names. A notification hook that itself fails is caught and reported rather than being allowed to take down the run.
+Failures reach the owner through `notify`, which always writes to stderr — enough for a scheduler that mails its output — and additionally pipes the message to whatever shell command `$AKASHIC_NOTIFY` names, with a 30-second timeout. A hook that itself fails is caught and reported rather than being allowed to take down the run.
 
-Sources: [bin/akashic_loop.py:95-106](../../bin/akashic_loop.py#L95-L106), [bin/akashic_loop.py:252-281](../../bin/akashic_loop.py#L252-L281)
+Sources: [bin/akashic_loop.py:16-18](../../bin/akashic_loop.py#L16-L18), [bin/akashic_loop.py:127-138](../../bin/akashic_loop.py#L127-L138), [bin/akashic_loop.py:325-328](../../bin/akashic_loop.py#L325-L328)
 
-## Configuration
+## Configuration and the dry run
 
-The fleet is a plain text file: one repository path per line, `#` comments and blank lines ignored, `~` expanded so paths are never handed to git with a tilde in them. It is read from `--repos`, else `$AKASHIC_REPOS`, else `~/.config/akashic-record/repos`. The list lives outside the repository on purpose — which repos a person maintains is machine-local, not something to commit to a shared project.
+The fleet is a plain text file: one repository path per line, `#` comments and blank lines ignored, `~` expanded so paths are never handed to git with a tilde in them. It is read from `--repos`, else `$AKASHIC_REPOS`, else `~/.config/akashic-record/repos`. The list lives outside the repository on purpose — which repos a person maintains is machine-local.
 
-`--dry-run` reports what each repo would need and spends nothing, which is also the safe way to confirm a schedule is pointed at the right paths. It fires the notification hook too, for any repo that is not clean: under a scheduler stdout is a log file nobody opens, and report-only is the mode an install is meant to start in, so a dry run that only printed would make a fleet needing work look exactly like a quiet one. A clean dry run stays silent, because a banner that always arrives is a banner that stops being read.
+`--dry-run` reports what each repo needs and spends nothing, which is also the safe way to confirm a schedule is pointed at the right paths; both `remap_repo` and `update_repo` print a "would:" line and return before touching git. It fires the notification hook too, for any repo that is not clean: under a scheduler stdout is a file nobody opens, and report-only is the mode an install is meant to start in, so a dry run that only printed would make a fleet needing work look exactly like a quiet one. The live paths stay quiet at that point on purpose — they speak by opening a PR, and `notify` is reserved for what needs a human.
 
-Sources: [bin/akashic_loop.py:29-32](../../bin/akashic_loop.py#L29-L32), [bin/akashic_loop.py:51-58](../../bin/akashic_loop.py#L51-L58), [bin/akashic_loop.py:85-92](../../bin/akashic_loop.py#L85-L92), [bin/akashic_loop.py:212-249](../../bin/akashic_loop.py#L212-L249), [bin/akashic_loop.py:252-281](../../bin/akashic_loop.py#L252-L281)
+Sources: [bin/akashic_loop.py:13-14](../../bin/akashic_loop.py#L13-L14), [bin/akashic_loop.py:30-32](../../bin/akashic_loop.py#L30-L32), [bin/akashic_loop.py:68-75](../../bin/akashic_loop.py#L68-L75), [bin/akashic_loop.py:165-171](../../bin/akashic_loop.py#L165-L171), [bin/akashic_loop.py:209-215](../../bin/akashic_loop.py#L209-L215), [bin/akashic_loop.py:274-283](../../bin/akashic_loop.py#L274-L283), [bin/akashic_loop.py:303-323](../../bin/akashic_loop.py#L303-L323)
 
-*Generated from commit `66f9e52a` on 2026-08-07.*
+*Generated from commit `c57eaf30` on 2026-08-11.*

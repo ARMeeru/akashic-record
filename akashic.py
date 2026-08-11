@@ -1280,8 +1280,35 @@ def compute_stale(root):
     return report
 
 
-WORK_BUCKETS = ("stale", "edited", "orphaned", "uncovered", "missing",
-                "planned", "drifted", "restated", "unblessed")
+# What a non-empty bucket means somebody has to *do*. Consumers route from
+# this; `WORK_BUCKETS` is derived from its keys, so a bucket that no action
+# covers cannot exist.
+#
+# The two structures used to be independent, and they drifted the moment they
+# could: `restated` and `unblessed` were added to the tuple, and the loop's own
+# hardcoded list of "buckets that mean work" was never touched again. A
+# restated-only repo then classified as clean, so the fleet reported a wiki
+# fresh while a corrected brief sat unwritten. A lookup table sitting *beside*
+# the tuple would have permitted exactly the same drift; deriving one from the
+# other is what makes the class impossible rather than merely fixed once.
+#
+# `review` is its own action and must never collapse into `update`: hard rule 2
+# says a human-edited page is never overwritten, so a bucket carrying
+# edited-like semantics routed to an LLM would destroy work. A consumer meeting
+# an action it does not know is required to fail loudly for the same reason --
+# guessing `update` is the one guess that can lose prose.
+BUCKET_ACTIONS = {
+    "stale": "update",
+    "edited": "review",
+    "orphaned": "update",
+    "uncovered": "update",
+    "missing": "update",
+    "planned": "update",
+    "drifted": "remap",
+    "restated": "update",
+    "unblessed": "update",
+}
+WORK_BUCKETS = tuple(BUCKET_ACTIONS)
 
 
 def bucket_ids(report, bucket):
