@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "f2b491c0e697457b7c8adc630f27f6a3a0e14663",
-  "generated": "2026-08-11T15:56:01Z",
+  "anchor": "62b2f0ac5f9a8bd8c959103eb0716b7fbbdb3553",
+  "generated": "2026-08-11T16:14:49Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -12,9 +12,10 @@
       "id": "index",
       "title": "Project Overview",
       "parent": null,
-      "goal": "Orient a new developer in their first hour: what akashic-record is, the four artifacts (design doc, skill, deterministic core, maintenance loop), the division of labor between LLM and script, and where to start reading.",
+      "goal": "Orient a new developer in their first hour: what akashic-record is, the four artifacts (design doc, skill, deterministic core, maintenance loop), the division of labor between LLM and script, and where to start reading. Name your evidence in the prose, by the landmark the source itself uses: a section number, a named table, a numbered phase. Citations under prose that names what it draws on survive a rewrite; citations under prose that does not get dropped by the next generation as inherited noise, and this page has lost the same ones three times. Two constructs cannot name a landmark by themselves and need the help written in. The pipeline diagram carries its claims in node labels rather than sentences, so give it a caption naming the phases its edges are. The orientation paragraph sits above every H2 and so owns no Sources line of its own, which makes its evidence look misplaced from inside the first section that adopts it: attribute its claims in the text, particularly the one about every section ending in a Sources line pointing at exact lines.",
       "scope": [
         "README.md",
+        "CHANGELOG.md",
         "DESIGN.md",
         "LICENSE",
         "CLAUDE.md",
@@ -22,6 +23,7 @@
         "SECURITY.md"
       ],
       "files": [
+        "CHANGELOG.md",
         "CLAUDE.md",
         "CONTRIBUTING.md",
         "DESIGN.md",
@@ -30,17 +32,36 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:3d233ef737c13aba64b9af12505a8399a34baa0a1423a993ef5785a39c227758",
+      "hash": "sha256:ee3aeb15b97955e29278636c0edc3b3576d56eb1ec3ec20b90e2e1ff1d3a6d52",
       "frozen": false,
       "blobs": {
+        "CHANGELOG.md": "d0925078a4a58689ddce009eedd00c4faa00b4dd",
         "CLAUDE.md": "262128074f061e013cca2863db8b019bd9859f54",
         "CONTRIBUTING.md": "8f6a65bc2499896268e5f94bde0fdca0d003eea0",
         "DESIGN.md": "035e5c247e03552e9137d47fa15178eba258612f",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
-        "README.md": "5fff7f047d089b3a26f89652da83cac39d31d4f0",
+        "README.md": "007ebdf68cc31da46ce391c1f85e183139ae73b9",
         "SECURITY.md": "11afb477e48693ee760c6f4225ea73066e50efa7"
       },
       "ranges": {
+        "CHANGELOG.md": [
+          [
+            1,
+            11
+          ],
+          [
+            1,
+            11
+          ],
+          [
+            13,
+            34
+          ],
+          [
+            36,
+            40
+          ]
+        ],
         "CLAUDE.md": [
           [
             5,
@@ -51,7 +72,7 @@
             16
           ],
           [
-            10,
+            8,
             16
           ],
           [
@@ -63,16 +84,8 @@
             44
           ],
           [
-            31,
-            37
-          ],
-          [
             46,
-            48
-          ],
-          [
-            52,
-            71
+            50
           ],
           [
             52,
@@ -102,24 +115,20 @@
           ],
           [
             19,
+            22
+          ],
+          [
+            24,
             36
           ]
         ],
         "DESIGN.md": [
           [
-            11,
-            15
+            1,
+            16
           ],
           [
             19,
-            22
-          ],
-          [
-            19,
-            40
-          ],
-          [
-            41,
             45
           ],
           [
@@ -127,16 +136,16 @@
             56
           ],
           [
-            47,
-            56
-          ],
-          [
             58,
-            68
+            73
           ],
           [
-            231,
-            238
+            110,
+            125
+          ],
+          [
+            208,
+            235
           ],
           [
             280,
@@ -144,22 +153,18 @@
           ],
           [
             300,
-            311
+            315
           ],
           [
             317,
-            320
+            326
           ],
           [
-            407,
+            391,
             414
           ],
           [
             442,
-            462
-          ],
-          [
-            464,
             466
           ],
           [
@@ -168,14 +173,14 @@
           ],
           [
             613,
-            615
+            619
           ],
           [
             625,
             629
           ],
           [
-            881,
+            875,
             885
           ],
           [
@@ -188,10 +193,6 @@
           ],
           [
             1042,
-            1051
-          ],
-          [
-            1050,
             1051
           ]
         ],
@@ -219,41 +220,49 @@
             48
           ],
           [
-            54,
-            91
+            32,
+            48
+          ],
+          [
+            32,
+            52
           ],
           [
             54,
             91
           ],
           [
-            99,
-            120
+            93,
+            101
           ],
           [
-            122,
-            158
+            93,
+            117
           ],
           [
-            160,
-            164
+            119,
+            140
           ],
           [
-            166,
-            193
+            142,
+            178
           ],
           [
-            195,
-            208
+            186,
+            213
+          ],
+          [
+            215,
+            228
           ]
         ],
         "SECURITY.md": [
           [
             9,
-            22
+            34
           ],
           [
-            24,
+            17,
             28
           ],
           [
@@ -262,7 +271,7 @@
           ]
         ]
       },
-      "goal_hash": "sha256:7ac412c5e1f60da4aacd543150c5ad8a1bc95f79414bb6f7d7f6bc6b13a3b0eb"
+      "goal_hash": "sha256:d4e292b8a73289c5ecc0404ea489406bff6ca2ffd8adf678724cc9d3177f4964"
     },
     {
       "id": "deterministic-core",
