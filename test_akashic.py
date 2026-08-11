@@ -483,6 +483,33 @@ class TestStale(RepoCase):
         self.assertEqual(sorted(context["drift"]), ["a"],
                          "the span mapping remap needs is carried, not redone")
 
+    def test_remap_leaves_inline_code_examples_alone(self):
+        """Both walkers had to learn this, not just `verify`. Fixing the
+        parser alone would leave `remap` rewriting line numbers inside a span
+        the parser had decided was documentation -- a fresh divergence between
+        two readers of the same page, which is the class the loop's own
+        hardcoded bucket list already cost this project once."""
+        repo, root = self.ranged_repo()
+        page = repo / ".akashic/wiki/a.md"
+        page.write_text(
+            "# A\n\nSources: `like [src/app.py:5-10](../../src/app.py#L5-L10)` "
+            "[src/app.py:5-10](../../src/app.py#L5-L10)\n",
+            encoding="utf-8")
+        akashic.bless_pages(root, ["a"])
+        self.commit(repo, "page with an inline example")
+        akashic.anchor_repo(root)
+        original = (repo / "src/app.py").read_text(encoding="utf-8")
+        (repo / "src/app.py").write_text("import new\n" * 5 + original,
+                                         encoding="utf-8")
+        self.commit(repo, "shift")
+
+        akashic.remap_repo(root)
+        body = page.read_text(encoding="utf-8")
+        spanned, real = body.split("` ", 1)
+        self.assertIn("L5-L10", spanned,
+                      "the example inside backticks must not be rewritten")
+        self.assertIn("#L10-L15", real, "the real citation still shifts")
+
     def test_remap_leaves_fenced_examples_alone(self):
         repo, root = self.ranged_repo()
         page = repo / ".akashic/wiki/a.md"
@@ -1427,6 +1454,51 @@ class TestReviewRegressions(RepoCase):
                    "# Index\n\nSources: [x](../../src/app%00.py#L1)\n")
         errors = akashic.verify_repo(akashic.repo_root(repo))  # must not raise
         self.assertTrue(any("control characters" in e for e in errors))
+
+    def test_a_link_inside_backticks_is_not_a_wiki_link(self):
+        """The defect. SKILL.md's page contract gives the cross-reference form
+        as a literal markdown link, so any page documenting that contract
+        quotes it inside backticks -- and `verify` resolved the quotation
+        against the catalog and failed. Two regenerations of the same page
+        each fixed it by rewording and neither fix survived the next, because
+        a page is written from the source text every time."""
+        repo = self.valid_repo_for_verify()
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nCross-references are written as "
+                   "`[Title](./other-id.md)` in prose.\n\n"
+                   "Sources: [src/app.py:1-3](../../src/app.py#L1-L3)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertEqual(errors, [],
+                         "a link shown as an example is not a reference")
+
+    def test_a_real_link_on_the_same_line_still_resolves(self):
+        """The masking must cover span contents only. Dropping any line that
+        holds a backtick would trade this bug for a worse one: a genuine
+        broken cross-link going unreported."""
+        repo = self.valid_repo_for_verify()
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nWritten as `[Title](./other-id.md)`, for "
+                   "example [Ghost](./ghost.md).\n\n"
+                   "Sources: [src/app.py:1-3](../../src/app.py#L1-L3)\n")
+        errors = akashic.verify_repo(akashic.repo_root(repo))
+        self.assertTrue(any("ghost" in e for e in errors),
+                        f"the real link must still be checked: {errors}")
+        self.assertFalse(any("other-id" in e for e in errors))
+
+    def test_a_sources_line_carrying_a_code_span_still_parses(self):
+        """The regression this fix could introduce, pinned directly."""
+        repo = self.valid_repo_for_verify()
+        self.write(repo, ".akashic/wiki/index.md",
+                   "# Index\n\nReal section.\n\n"
+                   "Sources: `see also` "
+                   "[src/app.py:1-3](../../src/app.py#L1-L3)\n")
+        root = akashic.repo_root(repo)
+        self.assertEqual(akashic.verify_repo(root), [])
+        self.commit(repo, "wiki")
+        akashic.anchor_repo(root)
+        self.assertIn("src/app.py",
+                      akashic.load_catalog(root)["pages"][0]["files"],
+                      "the citation beside the span is still a dependency")
 
     def test_fenced_example_citation_ignored(self):
         repo = self.valid_repo_for_verify()

@@ -247,6 +247,18 @@ Citation grammar (fixed, machine-parsed by `verify`):
   but unnecessary. A destination parser that stops at the first `)` is not merely
   incomplete: the truncated prefix still resolves, so a real cited file gets
   reported as untracked instead of failing to parse.
+- **A link inside a fenced block or an inline code span is an example, not a reference.**
+  Neither is verified, neither becomes a recorded dependency, and `remap` rewrites around
+  them rather than through them. The fence half was there from the start; the inline half
+  was not, and its absence had a specific cost. `SKILL.md`'s page contract gives the
+  cross-reference form as a literal markdown link, so any page documenting that contract
+  quotes it inside backticks — whereupon `verify` resolved the quotation against the
+  catalog and failed. Two regenerations of the same page each repaired it by rewording,
+  and neither repair survived the next one, because a page is written from the source
+  text every time. The rule and the skipping both live in one place: `split_code_spans`
+  serves the parser and the rewriter, since a second copy is how two readers of the same
+  page start disagreeing. Double-backtick spans are out of scope — nothing in the page
+  contract produces one, and a partial match would be worse than none.
 - Line numbers are coordinates **in the anchor commit**.
 - **A citation's end line may exceed the file's real line count by exactly one.**
   Any file ending in a trailing newline (nearly all of them) displays one extra,

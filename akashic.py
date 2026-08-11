@@ -328,14 +328,38 @@ def cmd_scan(root):
 
 # ------------------------------------------------------------------- citations
 
+def split_code_spans(line):
+    """Yield `(text, in_span)` pairs covering the line.
+
+    One definition, because two callers need the same answer and a second
+    copy is how walkers drift apart. `parse_page_links` skips the spans;
+    `remap_body` leaves them untouched while rewriting around them.
+
+    Double-backtick spans are not handled. Nothing in the page contract
+    produces one, and a partial match here would be worse than none."""
+    pos = 0
+    for match in CODE_SPAN_RE.finditer(line):
+        yield line[pos:match.start()], False
+        yield match.group(0), True
+        pos = match.end()
+    yield line[pos:], False
+
+
 def parse_page_links(body_text):
     """Return (sources_blocks, citations, wiki_links, empty_sources).
 
     A Sources block is a paragraph: the `Sources:` line plus following lines
     until a blank line or heading (DESIGN.md 3.3 — wrapped citations count).
     Fenced code blocks are ignored entirely: an example citation in a fence is
-    neither verified nor a dependency. empty_sources lists the start line of
-    any Sources block that yielded zero parseable links.
+    neither verified nor a dependency. **Inline code spans are skipped for the
+    same reason**, which the fence rule alone did not cover: `SKILL.md`'s page
+    contract gives the cross-reference form as a literal markdown link, any
+    page documenting that contract quotes it inside backticks, and `verify`
+    resolved the quotation against the catalog and failed. Two regenerations
+    of the same page each fixed it by rewording and neither fix survived the
+    next one, because a page is written from the source text every time.
+    empty_sources lists the start line of any Sources block that yielded zero
+    parseable links.
     """
     citations, wiki_links, empty_sources = [], [], []
     sources_blocks = 0
@@ -364,14 +388,17 @@ def parse_page_links(body_text):
             block_start, block_links = lineno, 0
         elif in_sources and (not stripped or stripped.startswith("#")):
             close_block()
-        for match in LINK_RE.finditer(line):
-            target = match.group(2)
-            if in_sources:
-                citations.append((lineno, target))
-                block_links += 1
-            elif not SCHEME_RE.match(target) and not target.startswith("#") \
-                    and target.split("#")[0].endswith(".md"):
-                wiki_links.append((lineno, target))
+        for text, in_span in split_code_spans(line):
+            if in_span:
+                continue
+            for match in LINK_RE.finditer(text):
+                target = match.group(2)
+                if in_sources:
+                    citations.append((lineno, target))
+                    block_links += 1
+                elif not SCHEME_RE.match(target) and not target.startswith("#") \
+                        and target.split("#")[0].endswith(".md"):
+                    wiki_links.append((lineno, target))
     close_block()
     return sources_blocks, citations, wiki_links, empty_sources
 
@@ -1641,7 +1668,13 @@ def remap_body(body, drift):
             elif in_sources and (not stripped or stripped.startswith("#")):
                 in_sources = False
             if in_sources:
-                line = LINK_RE.sub(rewrite_link, line)
+                # Around inline code spans, never through them: a link
+                # written as an example is documentation, exactly as it is
+                # inside a fence, and shifting its line numbers would corrupt
+                # prose that means to show a form rather than point at code.
+                line = "".join(
+                    text if in_span else LINK_RE.sub(rewrite_link, text)
+                    for text, in_span in split_code_spans(line))
         out.append(line)
     return "\n".join(out)
 
