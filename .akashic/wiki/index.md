@@ -94,7 +94,7 @@ Three things exist because of that gap, and `README.md` is explicit that none of
 
 Two caveats travel with these. A critic pass is one sample, not a measurement — rerunning on an unchanged catalog keeps finding things. And the one intervention `README.md` says reliably fixes a wrong page is correcting its `goal` and regenerating.
 
-Sources: [README.md:54-86](../../README.md#L54-L86), [DESIGN.md:780-790](../../DESIGN.md#L780-L790)
+Sources: [README.md:54-86](../../README.md#L54-L86), [DESIGN.md:794-804](../../DESIGN.md#L794-L804)
 
 ## Where to start reading
 
@@ -121,7 +121,7 @@ ln -s "$(pwd)" ~/.claude/skills/akashic-record
 
 The helper also runs standalone against any git repo with at least one commit — `python3 akashic.py -C <repo> scan | stale | verify | anchor | prompt <id> | remap | plan-check | plan-critic | audit prompt <id> | bless <id>`. Exit codes are 0 ok, 1 verification failure, 2 usage or precondition error. `CLAUDE.md` and `README.md` both carry the annotated list.
 
-Sources: [README.md:88-122](../../README.md#L88-L122), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [CLAUDE.md:52-71](../../CLAUDE.md#L52-L71), [DESIGN.md:937-943](../../DESIGN.md#L937-L943)
+Sources: [README.md:88-122](../../README.md#L88-L122), [CLAUDE.md:18-44](../../CLAUDE.md#L18-L44), [CLAUDE.md:52-71](../../CLAUDE.md#L52-L71), [DESIGN.md:951-957](../../DESIGN.md#L951-L957)
 
 ## Working in this repo
 
@@ -139,7 +139,7 @@ Fixtures are throwaway git repos built in `tempfile` (see `RepoCase`), and new d
 
 This repo carries its own generated wiki in `.akashic/`, so a change touching source files is expected to refresh it via `stale` → regenerate → `bless <id>` → `verify` → `anchor`, committed as `chore: refresh self-dogfooded wiki`. Never hand-edit `catalog.json`'s `anchor`, `hash`, `files`, `ranges`, `blobs` or `goal_hash`, and never edit the derived `wiki/README.md`.
 
-Sources: [CLAUDE.md:18-26](../../CLAUDE.md#L18-L26), [CLAUDE.md:73-79](../../CLAUDE.md#L73-L79), [CONTRIBUTING.md:11-36](../../CONTRIBUTING.md#L11-L36), [DESIGN.md:921-935](../../DESIGN.md#L921-L935)
+Sources: [CLAUDE.md:18-26](../../CLAUDE.md#L18-L26), [CLAUDE.md:73-79](../../CLAUDE.md#L73-L79), [CONTRIBUTING.md:11-36](../../CONTRIBUTING.md#L11-L36), [DESIGN.md:935-949](../../DESIGN.md#L935-L949)
 
 ## Security posture and license
 
