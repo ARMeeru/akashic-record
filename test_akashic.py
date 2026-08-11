@@ -2443,6 +2443,140 @@ class TestLoop(RepoCase):
                       f"print; got: {buf.getvalue()!r}")
         self.assertIn(akashic_loop.NEEDS_UPDATE, buf.getvalue())
 
+    def wiki_repo(self):
+        """A committed, anchored, clean repo — what a fleet entry looks like."""
+        repo = self.make_repo()
+        self.write(repo, "f1.py", "one\n")
+        self.commit(repo)
+        self.write(repo, ".akashic/wiki/a.md",
+                   "# A\n\nSources: [f1](../../f1.py)\n")
+        self.catalog(repo, [self.page("a", files=["f1.py"], scope=["f1.py"])],
+                     anchor=self.head(repo))
+        self.commit(repo, "wiki")
+        return repo
+
+    def refusal_from(self, repo, dry_run=False):
+        buf = io.StringIO()
+        with contextlib.redirect_stdout(io.StringIO()), \
+                contextlib.redirect_stderr(buf):
+            code = akashic_loop.process(str(repo), dry_run=dry_run)
+        return code, buf.getvalue()
+
+    def test_a_dirty_checkout_refuses_instead_of_sweeping_it_up(self):
+        """`git add .akashic` would put a human's uncommitted wiki edits into
+        the bot's PR under `chore: refresh wiki`. `dirty` was reported by
+        `compute_stale` from the beginning and read by nobody."""
+        repo = self.wiki_repo()
+        self.write(repo, ".akashic/wiki/a.md",
+                   "# A\n\nA human was editing this.\n\n"
+                   "Sources: [f1](../../f1.py)\n")
+        code, err = self.refusal_from(repo)
+        self.assertEqual(code, 2)
+        self.assertIn("uncommitted changes", err)
+
+    def test_a_checkout_stranded_on_a_loop_branch_refuses(self):
+        """The second cycle. Nothing switched back, so the checkout sat on
+        `chore/wiki-refresh` and later polls read a branch upstream merges
+        never advance -- reporting fresh while the real repo moved."""
+        repo = self.wiki_repo()
+        sh(repo, "git", "switch", "-q", "-c", "chore/wiki-refresh")
+        code, err = self.refusal_from(repo)
+        self.assertEqual(code, 2)
+        self.assertIn("chore/wiki-refresh", err)
+        self.assertIn("previous cycle created", err)
+
+    def test_the_workspace_gate_runs_before_the_verdict_is_trusted(self):
+        """The whole point. A stranded checkout's commonest report is
+        `clean`, so a gate that only guarded the *actions* would let the
+        fleet keep publishing a verdict about the wrong tree."""
+        repo = self.wiki_repo()
+        sh(repo, "git", "switch", "-q", "-c", "chore/wiki-remap")
+        report = akashic_loop.stale_report(str(repo))[0]
+        self.assertEqual(akashic_loop.classify(report), akashic_loop.CLEAN,
+                         "fixture must be one the loop would call clean")
+        code, err = self.refusal_from(repo, dry_run=True)
+        self.assertEqual(code, 2, "clean is not a reason to skip the gate")
+        self.assertIn("refusing to run a cycle", err)
+
+    def test_a_clean_checkout_on_the_default_branch_passes_the_gate(self):
+        repo = self.wiki_repo()
+        report = akashic_loop.stale_report(str(repo))[0]
+        self.assertEqual(akashic_loop.workspace_problems(str(repo), report), [])
+
+    def test_an_undeterminable_default_branch_does_not_refuse(self):
+        """`origin/HEAD` is absent often enough that its absence cannot be an
+        error, and guessing "main" is how a gate starts refusing correct
+        checkouts. These fixtures have no remote at all."""
+        repo = self.wiki_repo()
+        self.assertIsNone(akashic_loop.default_branch(str(repo)))
+        sh(repo, "git", "switch", "-q", "-c", "feature/whatever")
+        report = akashic_loop.stale_report(str(repo))[0]
+        self.assertEqual(akashic_loop.workspace_problems(str(repo), report), [])
+
+    def test_an_unreadable_path_abstains_rather_than_raising(self):
+        """`process` catches RuntimeError, so an OSError escaping the gate
+        would abandon every repo listed after this one."""
+        self.assertEqual(akashic_loop.current_branch("/no/such/path"), "")
+        self.assertIsNone(akashic_loop.default_branch("/no/such/path"))
+
+    def test_a_cycle_returns_the_checkout_to_where_it_started(self):
+        """A gate that refuses a stranded checkout, on a loop that strands its
+        own on every success, would refuse forever after the first PR."""
+        repo = self.wiki_repo()
+        start = akashic_loop.current_branch(str(repo))
+        calls = []
+
+        def fake_run(cmd, cwd=None, check=True):
+            calls.append(cmd)
+            if cmd[:2] == ["git", "switch"]:
+                sh(repo, *cmd)
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if cmd[:2] == ["git", "rev-parse"]:
+                return subprocess.CompletedProcess(cmd, 0, start + "\n", "")
+            # Anything else is a step of the cycle; "dirty" keeps the
+            # wrote-nothing guard satisfied.
+            return subprocess.CompletedProcess(cmd, 0, "dirty\n", "")
+
+        with unittest.mock.patch.object(akashic_loop, "run", fake_run), \
+             unittest.mock.patch.object(akashic_loop, "open_pr", lambda *a, **k: None):
+            akashic_loop.remap_repo(str(repo), "chore/wiki-remap")
+        self.assertEqual(akashic_loop.current_branch(str(repo)), start)
+        self.assertIn(["git", "switch", start], calls)
+
+    def test_the_checkout_is_restored_even_when_the_cycle_fails(self):
+        """The restore is in a `finally` precisely so a failed cycle does not
+        leave the next one refusing."""
+        repo = self.wiki_repo()
+        start = akashic_loop.current_branch(str(repo))
+
+        def fake_run(cmd, cwd=None, check=True):
+            if cmd[:2] == ["git", "switch"]:
+                sh(repo, *cmd)
+                return subprocess.CompletedProcess(cmd, 0, "", "")
+            if cmd[:2] == ["git", "rev-parse"]:
+                return subprocess.CompletedProcess(cmd, 0, start + "\n", "")
+            raise RuntimeError("remap blew up")
+
+        with unittest.mock.patch.object(akashic_loop, "run", fake_run):
+            with self.assertRaises(RuntimeError):
+                akashic_loop.remap_repo(str(repo), "chore/wiki-remap")
+        self.assertEqual(akashic_loop.current_branch(str(repo)), start,
+                         "a failure must not strand the checkout")
+
+    def test_the_changed_nothing_guard_only_inspects_the_wiki(self):
+        """Repo-wide porcelain answered a different question: a flow that
+        wrote outside `.akashic` would satisfy it while writing no wiki."""
+        seen = []
+
+        def fake_run(cmd, cwd=None, check=True):
+            seen.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+
+        with unittest.mock.patch.object(akashic_loop, "run", fake_run):
+            self.assertFalse(akashic_loop.wiki_is_dirty("/anywhere"))
+        self.assertEqual(seen, [["git", "status", "--porcelain", "--",
+                                 ".akashic"]])
+
     def test_a_clean_dry_run_stays_silent(self):
         """The other half: a quiet fleet must not produce a daily banner, or
         the notification stops meaning anything."""
@@ -2453,6 +2587,9 @@ class TestLoop(RepoCase):
                    "# A\n\nSources: [f1](../../f1.py)\n")
         self.catalog(repo, [self.page("a", files=["f1.py"], scope=["f1.py"])],
                      anchor=self.head(repo))
+        # Committed, because `.akashic/` is repo-committed by design and an
+        # uncommitted one is now a refusal, not a quiet fleet.
+        self.commit(repo, "wiki")
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(io.StringIO()), \
