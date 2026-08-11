@@ -1,7 +1,7 @@
 {
   "version": 1,
-  "anchor": "65acf413cb2772568213782352cc68363b0d4bd5",
-  "generated": "2026-08-11T15:45:02Z",
+  "anchor": "f2b491c0e697457b7c8adc630f27f6a3a0e14663",
+  "generated": "2026-08-11T15:56:01Z",
   "language": "en",
   "exclude": [
     ".github/**"
@@ -30,14 +30,14 @@
         "SECURITY.md"
       ],
       "status": "done",
-      "hash": "sha256:dbb040c4bf4adea9962db9646f199affac48e8594fc274452cd3e9c50be59264",
+      "hash": "sha256:3d233ef737c13aba64b9af12505a8399a34baa0a1423a993ef5785a39c227758",
       "frozen": false,
       "blobs": {
         "CLAUDE.md": "262128074f061e013cca2863db8b019bd9859f54",
         "CONTRIBUTING.md": "8f6a65bc2499896268e5f94bde0fdca0d003eea0",
         "DESIGN.md": "035e5c247e03552e9137d47fa15178eba258612f",
         "LICENSE": "8b1d2d3589c41340110446173ef58b42ad602869",
-        "README.md": "37fe9205fd8e1782ce9c4cff716467e8528f69f7",
+        "README.md": "5fff7f047d089b3a26f89652da83cac39d31d4f0",
         "SECURITY.md": "11afb477e48693ee760c6f4225ea73066e50efa7"
       },
       "ranges": {
@@ -116,7 +116,7 @@
           ],
           [
             19,
-            45
+            40
           ],
           [
             41,
@@ -135,7 +135,7 @@
             68
           ],
           [
-            208,
+            231,
             238
           ],
           [
@@ -171,6 +171,10 @@
             615
           ],
           [
+            625,
+            629
+          ],
+          [
             881,
             885
           ],
@@ -184,6 +188,10 @@
           ],
           [
             1042,
+            1051
+          ],
+          [
+            1050,
             1051
           ]
         ],
@@ -212,19 +220,31 @@
           ],
           [
             54,
-            86
+            91
           ],
           [
             54,
-            86
+            91
           ],
           [
-            88,
-            122
+            99,
+            120
           ],
           [
-            150,
-            163
+            122,
+            158
+          ],
+          [
+            160,
+            164
+          ],
+          [
+            166,
+            193
+          ],
+          [
+            195,
+            208
           ]
         ],
         "SECURITY.md": [
