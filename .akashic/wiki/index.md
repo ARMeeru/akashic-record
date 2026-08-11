@@ -21,7 +21,7 @@ README.md points a new reader at four files, and each one has a page or a sectio
 
 The summary at the top of CLAUDE.md names three of these — SKILL.md, akashic.py and DESIGN.md — and leaves the loop out; README.md's list is the one that includes `bin/akashic_loop.py`.
 
-Sources: [README.md:22-30](../../README.md#L22-L30), [README.md:88-92](../../README.md#L88-L92), [CLAUDE.md:10-16](../../CLAUDE.md#L10-L16), [CLAUDE.md:31-41](../../CLAUDE.md#L31-L41), [DESIGN.md:52-52](../../DESIGN.md#L52-L52), [DESIGN.md:965-985](../../DESIGN.md#L965-L985), [CONTRIBUTING.md:7-9](../../CONTRIBUTING.md#L7-L9)
+Sources: [README.md:22-30](../../README.md#L22-L30), [README.md:88-92](../../README.md#L88-L92), [CLAUDE.md:10-16](../../CLAUDE.md#L10-L16), [CLAUDE.md:31-41](../../CLAUDE.md#L31-L41), [DESIGN.md:52-52](../../DESIGN.md#L52-L52), [DESIGN.md:982-1002](../../DESIGN.md#L982-L1002), [CONTRIBUTING.md:7-9](../../CONTRIBUTING.md#L7-L9)
 
 ## Division of labor between the LLM and the script
 
@@ -48,13 +48,13 @@ flowchart TD
   stale --> prompt
 ```
 
-Sources: [DESIGN.md:251-269](../../DESIGN.md#L251-L269), [DESIGN.md:288-298](../../DESIGN.md#L288-L298), [DESIGN.md:378-385](../../DESIGN.md#L378-L385), [DESIGN.md:413-437](../../DESIGN.md#L413-L437), [DESIGN.md:474-490](../../DESIGN.md#L474-L490), [DESIGN.md:584-590](../../DESIGN.md#L584-L590)
+Sources: [DESIGN.md:268-286](../../DESIGN.md#L268-L286), [DESIGN.md:305-315](../../DESIGN.md#L305-L315), [DESIGN.md:395-402](../../DESIGN.md#L395-L402), [DESIGN.md:430-454](../../DESIGN.md#L430-L454), [DESIGN.md:491-507](../../DESIGN.md#L491-L507), [DESIGN.md:601-607](../../DESIGN.md#L601-L607)
 
 `scan` produces a filtered file tree with per-file line counts from `git ls-files`, and a git repo with at least one commit is a hard precondition rather than something the tool degrades around. Planning turns that into the `pages` array of `catalog.json`. The two pre-flight gates then look at the plan before any tokens are spent on it: `plan-check` is free and mechanical (unmatched scopes, a scope sitting inside a sibling's, overlapping pairs ranked by duplicated lines) and always exits 0, while `plan-critic` renders one adversarial review prompt for the whole catalog and an LLM judges whether each brief is truthful and reachable from its own files.
 
 Generation fans out one subagent per page, each reading only its assigned files, each prompt rendered by `akashic.py prompt <id>` rather than typed by hand — mechanical templating is what keeps a rule like the read-only mandate or the citable-file allowlist from being forgotten on one dispatch. `verify` then checks the citations mechanically and `anchor` records each page's dependencies, hashes and blob shas against the current commit and re-renders the derived table of contents. The orchestration rules around all of this live in [Skill Orchestration](./skill-orchestration.md), the subcommand behavior in [Deterministic Core](./deterministic-core.md), and the unattended scheduled version in [Maintenance Loop](./maintenance-loop.md).
 
-Sources: [README.md:32-52](../../README.md#L32-L52), [DESIGN.md:258-269](../../DESIGN.md#L258-L269), [DESIGN.md:271-286](../../DESIGN.md#L271-L286), [DESIGN.md:288-298](../../DESIGN.md#L288-L298), [DESIGN.md:351-360](../../DESIGN.md#L351-L360), [DESIGN.md:362-385](../../DESIGN.md#L362-L385), [DESIGN.md:413-437](../../DESIGN.md#L413-L437), [DESIGN.md:584-594](../../DESIGN.md#L584-L594)
+Sources: [README.md:32-52](../../README.md#L32-L52), [DESIGN.md:275-286](../../DESIGN.md#L275-L286), [DESIGN.md:288-303](../../DESIGN.md#L288-L303), [DESIGN.md:305-315](../../DESIGN.md#L305-L315), [DESIGN.md:368-377](../../DESIGN.md#L368-L377), [DESIGN.md:379-402](../../DESIGN.md#L379-L402), [DESIGN.md:430-454](../../DESIGN.md#L430-L454), [DESIGN.md:601-611](../../DESIGN.md#L601-L611)
 
 ## What lands in the repository
 
@@ -62,7 +62,7 @@ The tool writes a single directory into the target repo: `catalog.json` as the o
 
 A page is an ordinary architecture doc: an H1, a one-paragraph orientation, H2 sections of prose with the occasional plain Mermaid diagram, and under each section a paragraph beginning with the literal token `Sources:` followed by comma-separated markdown links into the source. Link targets are paths relative to the page with an optional `#Lstart-Lend` fragment, which GitHub renders as working line-highlighting links, and the numbers are coordinates in the anchor commit. `Sources:` stays in English whatever language the prose is in, because a localized structural marker breaks any parser. Pages carry no changelog sections: they are timeless, and git holds the history.
 
-Sources: [DESIGN.md:58-73](../../DESIGN.md#L58-L73), [DESIGN.md:191-212](../../DESIGN.md#L191-L212), [DESIGN.md:214-249](../../DESIGN.md#L214-L249), [DESIGN.md:832-835](../../DESIGN.md#L832-L835), [CLAUDE.md:46-50](../../CLAUDE.md#L46-L50)
+Sources: [DESIGN.md:58-73](../../DESIGN.md#L58-L73), [DESIGN.md:208-229](../../DESIGN.md#L208-L229), [DESIGN.md:231-266](../../DESIGN.md#L231-L266), [DESIGN.md:849-852](../../DESIGN.md#L849-L852), [CLAUDE.md:46-50](../../CLAUDE.md#L46-L50)
 
 ## What verification proves, and what it does not
 
@@ -70,7 +70,7 @@ Sources: [DESIGN.md:58-73](../../DESIGN.md#L58-L73), [DESIGN.md:191-212](../../D
 
 Three things exist because of that gap, and none of them gates `anchor`, on the reasoning that a heuristic over prose which blocked publishing would eventually block a correct page: the two pre-flight plan gates, the on-demand blind claim audit (`audit prompt <id>`, which labels evidence `[E1]`, `[E2]` rather than by filename so the judge cannot fill gaps from what a file of that name usually contains), and three standing generation disciplines rendered into every page prompt — scope generalizations to what was actually read, state the method behind any absence claim, and write only what the goal asks. SECURITY.md adds the matching caveat about the safety wording: the read-only mandate in subagent prompts and the blind labelling in the audit are instructions to a model, not a sandbox, and should be read as conventions the tool makes hard to forget rather than as enforcement.
 
-Sources: [README.md:54-86](../../README.md#L54-L86), [DESIGN.md:439-458](../../DESIGN.md#L439-L458), [DESIGN.md:846-856](../../DESIGN.md#L846-L856), [SECURITY.md:24-28](../../SECURITY.md#L24-L28)
+Sources: [README.md:54-86](../../README.md#L54-L86), [DESIGN.md:456-475](../../DESIGN.md#L456-L475), [DESIGN.md:863-873](../../DESIGN.md#L863-L873), [SECURITY.md:24-28](../../SECURITY.md#L24-L28)
 
 ## Where to start reading
 
@@ -85,6 +85,6 @@ There is no build step and no dependency install; `python3 test_akashic.py` runs
 
 On status and housekeeping: CLAUDE.md records milestones M0–M3 as shipped with only the Backlog milestone open, and points at GitHub issues for sequencing and per-task definitions of done. The project is MIT licensed, and SECURITY.md asks for vulnerabilities via GitHub private vulnerability reporting, naming path traversal, writes escaping `.akashic/`, edit-protection or hash-semantics bypasses, and `verify` bypasses as in scope — with the quality of generated prose explicitly out of scope and treated as a regular bug.
 
-Sources: [README.md:94-128](../../README.md#L94-L128), [README.md:150-163](../../README.md#L150-L163), [DESIGN.md:987-1011](../../DESIGN.md#L987-L1011), [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:19-36](../../CONTRIBUTING.md#L19-L36), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:20-26](../../CLAUDE.md#L20-L26), [CLAUDE.md:77-79](../../CLAUDE.md#L77-L79), [LICENSE:1-3](../../LICENSE#L1-L3), [SECURITY.md:3-23](../../SECURITY.md#L3-L23)
+Sources: [README.md:94-128](../../README.md#L94-L128), [README.md:150-163](../../README.md#L150-L163), [DESIGN.md:1004-1028](../../DESIGN.md#L1004-L1028), [CONTRIBUTING.md:5-9](../../CONTRIBUTING.md#L5-L9), [CONTRIBUTING.md:19-36](../../CONTRIBUTING.md#L19-L36), [CLAUDE.md:5-6](../../CLAUDE.md#L5-L6), [CLAUDE.md:20-26](../../CLAUDE.md#L20-L26), [CLAUDE.md:77-79](../../CLAUDE.md#L77-L79), [LICENSE:1-3](../../LICENSE#L1-L3), [SECURITY.md:3-23](../../SECURITY.md#L3-L23)
 
 *Generated from commit `45c32618` on 2026-08-11.*
