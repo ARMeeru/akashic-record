@@ -35,4 +35,4 @@ Out of scope:
 
 ## Supported versions
 
-The latest commit on `develop` only. There are no tagged releases; install is a symlink of the working tree.
+The latest commit on `develop` only. Tags exist so a team can pin a version, but a fix lands on `develop` and is not backported: if you have pinned a tag, upgrading to a newer one is how you get the fix. Install is a symlink of a working tree, so whichever ref that clone has checked out is what actually runs.
