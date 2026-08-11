@@ -83,7 +83,12 @@ page:
   only what the goal asks.
 
 The one intervention that reliably fixes a wrong page is correcting its `goal`
-and regenerating.
+and regenerating. If a page reads wrong, resist editing the prose: the next
+regeneration writes from the goal, so a fix that lives only in the page is a fix
+that lasts until the file it documents changes. Name in the goal what the page
+got wrong — the groups it must distinguish, the claim it may not generalize —
+and see the audit flow in `SKILL.md` for how to find out what is wrong in the
+first place.
 
 ## Install
 
@@ -104,6 +109,16 @@ In any git repo (≥1 commit), inside Claude Code:
 The wiki lands in `.akashic/wiki/` as plain markdown — commit it; teammates get it
 via `git pull`, GitHub renders it (Mermaid included).
 
+**For a first run, pick a repo you already know well and can read the whole output
+of.** Something in the low thousands of lines, generating maybe eight to fifteen
+pages. Not because the tool struggles with more — the field repo it was hardened
+against is 28 pages — but because the only way to learn what this produces is to
+check it against what you already know, and you cannot do that on a codebase you
+are meeting for the first time. This repo's own wiki is committed as a worked
+example: [`.akashic/wiki/README.md`](.akashic/wiki/README.md) is the generated
+table of contents, and the four pages under it are what this repo looks like
+documented — 12 files and about 7,700 lines of source and design docs.
+
 The helper also works standalone:
 
 ```sh
@@ -120,6 +135,27 @@ python3 akashic.py -C <repo> plan-critic   # render the adversarial plan-review 
 python3 akashic.py -C <repo> audit prompt <id>  # blind claim refuter (on demand; --out to write it to a file)
 python3 akashic.py -C <repo> bless <id>    # hash -> null after regenerating (--done also flips status)
 ```
+
+Driving it by hand means supplying the LLM steps yourself, in the order `SKILL.md`
+lays out. Do not shorten it: every step below either produces something a later one
+needs or is a gate, and skipping the gates documents a worse path than the skill
+actually runs.
+
+1. `scan` for the file list, then write `.akashic/catalog.json` — one entry per page,
+   with a `goal` and a `scope`.
+2. `plan-check` for shape (free, always exits 0), then `plan-critic --out` and hand
+   that prompt to a model. Both judge the plan, before you pay for a fan-out.
+3. `prompt <id> --out` per page and dispatch each to its own agent. Never hand-write
+   these: rendering them from catalog and filesystem is what stops a page citing a
+   file nobody tracked.
+4. `bless <id> --done` as each page lands.
+5. `verify`, fix whatever it errors on, then `anchor`.
+6. `stale --check` should now exit 0.
+
+On an existing wiki the loop is the same from step 3, driven by `stale` instead of a
+new catalog: `remap` the `drifted` pages rather than regenerating them, use
+`prompt <id> --update` for the rest, and read `unblessed` pages before deciding
+anything about them.
 
 ## Tests
 
@@ -146,6 +182,15 @@ required checks pass. A PR containing regenerated pages always waits for a human
 
 Schedule it however this machine prefers. Set `$AKASHIC_NOTIFY` to a command that should
 receive failures on stdin; without it they still reach stderr.
+
+**If a cycle suddenly wants to regenerate everything, the anchor commit is probably
+gone.** Staleness is measured as a diff from the commit the wiki was last anchored to,
+so a shallow clone that does not reach it, or a squash merge that replaced it with a
+new commit, leaves nothing to diff against. The tool falls back to comparing recorded
+file hashes and reports every page it cannot prove fresh, which on a squashed history
+is all of them. That is deliberate: wasting a regeneration is recoverable, and marking
+stale content fresh is not. Fetch enough history to reach the anchor, or accept one
+full pass and let the next `anchor` re-baseline.
 
 ## Roadmap
 
