@@ -96,6 +96,26 @@ first place.
 ln -s "$(pwd)" ~/.claude/skills/akashic-record
 ```
 
+That symlink points at a working tree, so **whatever is checked out is what runs**. It
+cannot pin anything by itself: switch the clone to another branch and every session on
+this machine picks that up with no install step and no warning.
+
+To pin a version, check out a tag before symlinking:
+
+```sh
+git clone https://github.com/ARMeeru/akashic-record
+cd akashic-record && git checkout v0.1.0
+ln -s "$(pwd)" ~/.claude/skills/akashic-record
+```
+
+Upgrading is `git fetch --tags && git checkout <newer tag>` in that clone. Read
+[CHANGELOG.md](CHANGELOG.md) first: it records behavior and format changes only, and
+the tag is independent of `catalog.json`'s `version` on purpose.
+
+Working on the tool itself, or dogfooding it against this repo, means staying on
+`develop` and accepting that the skill changes under you. That is the right trade for a
+maintainer and the wrong one for a team.
+
 ## Use
 
 In any git repo (≥1 commit), inside Claude Code:
